@@ -125,13 +125,23 @@ class MediaUploader extends Component
 
     protected function nextOrder(): int
     {
-        $model = $this->target();
+        // While creating: base order from queued items only
+        if (! $this->hasTarget()) {
+            $maxPending = (int) collect($this->pendingMeta ?? [])->pluck('order')->max();
+            return ($maxPending ?: 0) + 1;
+        }
+
+        // Editing an existing model: read current max order from DB
+        $model = $this->target();           // now non-null
         $collection = $this->collection ?? 'default';
 
-        return (int) ($model->media()
-                ->where('collection_name', $collection)
-                ->max('order_column') ?? 0) + 1;
+        $max = (int) ($model->media()
+            ->where('collection_name', $collection)
+            ->max('order_column') ?? 0);
+
+        return $max + 1;
     }
+
 
     protected function csvToArray(?string $csv): array
     {
@@ -215,17 +225,23 @@ class MediaUploader extends Component
 
     protected function hasTarget(): bool
     {
-        return !empty($this->resolvedModelClass)
+        // these are typed but may be uninitialized; isset() is safe
+        return isset($this->resolvedModelClass, $this->resolvedModelId)
+            && $this->resolvedModelClass !== ''
             && $this->resolvedModelId !== null
             && $this->resolvedModelId !== '';
     }
 
+
+    // change return type to ?Model
     protected function target(): ?Model
     {
         if (! $this->hasTarget()) return null;
+
         $cls = $this->resolvedModelClass;
         return $cls::findOrFail($this->resolvedModelId);
     }
+
 
     public function updatedUploads(): void
     {
@@ -282,7 +298,7 @@ class MediaUploader extends Component
             return;
         }
 
-        $model      = $this->target();
+        $model = $this->target();
         $collection = $this->collection ?? 'default';
         $added      = $replaced = $skipped = $renamed = 0;
 
@@ -353,10 +369,11 @@ class MediaUploader extends Component
         int|string $id,
         ?string $collection = null,
         ?string $disk = null,
-        ?string $channel = null // optional scoping
+        ?string $channel = null,           // <— NEW
     ): void {
-        // If you use channels, ignore events for other uploaders
-        if ($this->channel && $this->channel !== $channel) return;
+        if ($this->channel && $channel && $channel !== $this->channel) {
+            return;
+        }
 
         $fqcn = $this->resolveModelClass($model);
         if (! in_array(HasMedia::class, class_implements($fqcn), true)) {
@@ -367,26 +384,21 @@ class MediaUploader extends Component
         $this->resolvedModelClass = $fqcn;
         $this->resolvedModelId    = (string) $id;
 
-        $originalCollection = $this->collection;
-        $originalDisk       = $this->disk;
+        $origCollection = $this->collection;
+        $origDisk       = $this->disk;
         if ($collection) $this->collection = $collection;
         if ($disk)       $this->disk       = $disk;
 
-        if (empty($this->uploads)) {
-            // Nothing queued; just let the parent know we’re ready
-            $this->dispatch('media-attached', model: $fqcn, id: (string) $id);
-            $this->collection = $originalCollection;
-            $this->disk       = $originalDisk;
-            return;
+        if (!empty($this->uploads)) {
+            $this->uploadFiles();
         }
 
-        $this->uploadFiles(); // will now succeed because target is set
+        $this->collection = $origCollection;
+        $this->disk       = $origDisk;
 
-        $this->collection = $originalCollection;
-        $this->disk       = $originalDisk;
-
-        $this->dispatch('media-attached', model: $fqcn, id: (string) $id);
+        $this->dispatch('media-attached', model: $fqcn, id: (string) $id, channel: $channel);
     }
+
 
     public function remove(int $mediaId): void
     {
