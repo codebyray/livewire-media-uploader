@@ -256,144 +256,242 @@
                     <p class="small text-muted mb-0">No gallery images yet.</p>
                 </div>
             @else
-                <ul class="list-group list-group-flush">
-                    @foreach ($items as $m)
-                        @php
-                            $id = (int) $m['id'];
-                            $isEditing = isset($editing[$id]);
-                            $linkText = $m['caption'] ?: ($m['name'] ?: ($m['original_name'] ?? $m['file_name']));
-                        @endphp
+                @if (count($items) === 0)
+                    <div class="p-3">
+                        <p class="small text-muted mb-0">No gallery images yet.</p>
+                    </div>
+                @else
+                    @if ($listAll)
+                        {{-- Grouped by collection --}}
+                        @foreach ($groups as $collectionName => $collectionItems)
+                            <div class="px-3 py-2 bg-light border-bottom">
+                                <div class="small fw-semibold text-body text-uppercase">{{ $collectionName }}</div>
+                            </div>
 
-                        <li class="list-group-item p-3 d-flex gap-3 align-items-start">
-                            {{-- Thumbnail / icon --}}
-                            @if(!empty($m['thumb']))
-                                <img src="{{ $m['thumb'] }}" alt="" class="rounded border" style="width:64px;height:64px;object-fit:cover;">
-                            @else
-                                <div class="rounded border d-grid text-muted align-items-center justify-content-center" style="width:64px;height:64px;place-items:center;">
-                                    <svg viewBox="0 0 24 24" style="width:28px;height:28px" fill="none" stroke="currentColor" stroke-width="1.5">
-                                        <path d="M7 3h6l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
-                                        <path d="M13 3v5h5"/>
-                                    </svg>
-                                </div>
-                            @endif
-
-                            {{-- Content --}}
-                            <div class="flex-grow-1 min-w-0">
-                                @if (! $isEditing)
+                            <ul class="list-group list-group-flush">
+                                @foreach ($collectionItems as $m)
                                     @php
-                                        $isImage = \Illuminate\Support\Str::startsWith($m['mime'] ?? '', 'image/');
+                                        $id = (int) $m['id'];
+                                        $isEditing = isset($editing[$id]);
+                                        $linkText = $m['caption'] ?: ($m['name'] ?: ($m['original_name'] ?? $m['file_name']));
                                     @endphp
 
-                                    <div class="fw-semibold text-truncate">
-                                        @if ($isImage)
-                                            <button
-                                                type="button"
-                                                @click="openPreview(@js($m['url']), @js($linkText))"
-                                                class="btn btn-link p-0 align-baseline"
-                                            >
-                                                {{ $linkText }}
-                                            </button>
+                                    {{-- Paste your existing <li>...</li> markup here, unchanged, using $m --}}
+                                    <li class="list-group-item p-3 d-flex gap-3 align-items-start">
+                                        {{-- Thumbnail / icon --}}
+                                        @if(!empty($m['thumb']))
+                                            <img src="{{ $m['thumb'] }}" alt="" class="rounded border" style="width:64px;height:64px;object-fit:cover;">
                                         @else
-                                            <a
-                                                href="{{ $m['url'] }}"
-                                                target="_blank"
-                                                class="link-primary text-decoration-none"
-                                            >
-                                                {{ $linkText }}
-                                            </a>
-                                        @endif
-                                    </div>
-                                    @if(!empty($m['description']))
-                                        <div class="small text-muted text-truncate">{{ $m['description'] }}</div>
-                                    @endif
-                                    <div class="small text-muted">{{ number_format(($m['size'] ?? 0)/1024, 1) }} KB</div>
-                                @else
-                                    <div class="row g-2">
-                                        <div class="col-12 col-md-6">
-                                            <div class="form-label small mb-1">Caption</div>
-                                            <input
-                                                type="text"
-                                                wire:model.defer="editing.{{ $id }}.caption"
-                                                placeholder="Optional caption"
-                                                class="form-control form-control-sm"
-                                            />
-                                            @error('editing.'.$id.'.caption')
-                                            <div class="form-text text-danger">{{ $message }}</div>
-                                            @enderror
-                                        </div>
-
-                                        <div class="col-12 col-md-6">
-                                            <div class="form-label small mb-1">Description</div>
-                                            <input
-                                                type="text"
-                                                wire:model.defer="editing.{{ $id }}.description"
-                                                placeholder="Optional description"
-                                                class="form-control form-control-sm"
-                                            />
-                                            @error('editing.'.$id.'.description')
-                                            <div class="form-text text-danger">{{ $message }}</div>
-                                            @enderror
-                                        </div>
-
-                                        <div class="col-12 col-md-3">
-                                            <div class="form-label small mb-1">Order</div>
-                                            <div style="max-width: 80px;">
-                                                <input
-                                                    type="number" min="1" step="1"
-                                                    wire:model.defer="editing.{{ $id }}.order"
-                                                    class="form-control form-control-sm text-center"
-                                                />
+                                            <div class="rounded border d-grid text-muted align-items-center justify-content-center" style="width:64px;height:64px;place-items:center;">
+                                                <svg viewBox="0 0 24 24" style="width:28px;height:28px" fill="none" stroke="currentColor" stroke-width="1.5">
+                                                    <path d="M7 3h6l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
+                                                    <path d="M13 3v5h5"/>
+                                                </svg>
                                             </div>
-                                            @error('editing.'.$id.'.order')
-                                            <div class="form-text text-danger">{{ $message }}</div>
-                                            @enderror
+                                        @endif
+
+                                        {{-- Content (unchanged) --}}
+                                        <div class="flex-grow-1 min-w-0">
+                                            @php $isImage = \Illuminate\Support\Str::startsWith($m['mime'] ?? '', 'image/'); @endphp
+                                            @if (! $isEditing)
+                                                <div class="fw-semibold text-truncate">
+                                                    @if ($isImage)
+                                                        <button type="button" @click="openPreview(@js($m['url']), @js($linkText))" class="btn btn-link p-0 align-baseline">
+                                                            {{ $linkText }}
+                                                        </button>
+                                                    @else
+                                                        <a href="{{ $m['url'] }}" target="_blank" class="link-primary text-decoration-none">
+                                                            {{ $linkText }}
+                                                        </a>
+                                                    @endif
+                                                </div>
+                                                @if(!empty($m['description']))
+                                                    <div class="small text-muted text-truncate">{{ $m['description'] }}</div>
+                                                @endif
+                                                <div class="small text-muted">
+                                                    {{ number_format(($m['size'] ?? 0)/1024, 1) }} KB
+                                                    <span class="mx-2">•</span>
+                                                    <span class="text-uppercase">{{ $m['collection'] }}</span>
+                                                </div>
+                                            @else
+                                                {{-- your existing edit form for caption/description/order --}}
+                                                <div class="row g-2">
+                                                    <div class="col-12 col-md-6">
+                                                        <div class="form-label small mb-1">Caption</div>
+                                                        <input type="text" wire:model.defer="editing.{{ $id }}.caption" class="form-control form-control-sm" />
+                                                        @error('editing.'.$id.'.caption') <div class="form-text text-danger">{{ $message }}</div> @enderror
+                                                    </div>
+                                                    <div class="col-12 col-md-6">
+                                                        <div class="form-label small mb-1">Description</div>
+                                                        <input type="text" wire:model.defer="editing.{{ $id }}.description" class="form-control form-control-sm" />
+                                                        @error('editing.'.$id.'.description') <div class="form-text text-danger">{{ $message }}</div> @enderror
+                                                    </div>
+                                                    <div class="col-12 col-md-3">
+                                                        <div class="form-label small mb-1">Order</div>
+                                                        <div style="max-width: 80px;">
+                                                            <input type="number" min="1" step="1" wire:model.defer="editing.{{ $id }}.order" class="form-control form-control-sm text-center" />
+                                                        </div>
+                                                        @error('editing.'.$id.'.order') <div class="form-text text-danger">{{ $message }}</div> @enderror
+                                                    </div>
+                                                </div>
+                                            @endif
                                         </div>
+
+                                        <div class="d-flex gap-2 align-self-stretch align-items-center">
+                                            @if (! $isEditing)
+                                                <button type="button" wire:click="startEdit({{ $id }})" class="btn btn-outline-secondary btn-sm">Edit</button>
+                                                <button type="button" wire:click="confirmDelete({{ $id }})" class="btn btn-outline-danger btn-sm">Delete</button>
+                                            @else
+                                                <div class="d-flex gap-2 mt-2 mt-md-0">
+                                                    <button type="button" wire:click="saveEdit({{ $id }})" class="btn btn-outline-primary btn-sm">Save</button>
+                                                    <button type="button" wire:click="cancelEdit({{ $id }})" class="btn btn-outline-secondary btn-sm">Cancel</button>
+                                                </div>
+                                            @endif
+                                        </div>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @endforeach
+                    @else
+                        <ul class="list-group list-group-flush">
+                        @foreach ($items as $m)
+                            @php
+                                $id = (int) $m['id'];
+                                $isEditing = isset($editing[$id]);
+                                $linkText = $m['caption'] ?: ($m['name'] ?: ($m['original_name'] ?? $m['file_name']));
+                            @endphp
+
+                            <li class="list-group-item p-3 d-flex gap-3 align-items-start">
+                                {{-- Thumbnail / icon --}}
+                                @if(!empty($m['thumb']))
+                                    <img src="{{ $m['thumb'] }}" alt="" class="rounded border" style="width:64px;height:64px;object-fit:cover;">
+                                @else
+                                    <div class="rounded border d-grid text-muted align-items-center justify-content-center" style="width:64px;height:64px;place-items:center;">
+                                        <svg viewBox="0 0 24 24" style="width:28px;height:28px" fill="none" stroke="currentColor" stroke-width="1.5">
+                                            <path d="M7 3h6l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
+                                            <path d="M13 3v5h5"/>
+                                        </svg>
                                     </div>
                                 @endif
-                            </div>
 
-                            <div class="d-flex gap-2 align-self-stretch align-items-center">
-                                @if (! $isEditing)
-                                    <button
-                                        type="button"
-                                        wire:click="startEdit({{ $id }})"
-                                        class="btn btn-outline-secondary btn-sm"
-                                    >
-                                        Edit
-                                    </button>
-                                    <button
-                                        type="button"
-                                        wire:click="confirmDelete({{ $id }})"
-                                        wire:loading.attr="disabled"
-                                        class="btn btn-outline-danger btn-sm"
-                                    >
-                                        Delete
-                                    </button>
-                                @else
-                                    <div class="d-flex gap-2 mt-2 mt-md-0">
+                                {{-- Content --}}
+                                <div class="flex-grow-1 min-w-0">
+                                    @if (! $isEditing)
+                                        @php
+                                            $isImage = \Illuminate\Support\Str::startsWith($m['mime'] ?? '', 'image/');
+                                        @endphp
+
+                                        <div class="fw-semibold text-truncate">
+                                            @if ($isImage)
+                                                <button
+                                                    type="button"
+                                                    @click="openPreview(@js($m['url']), @js($linkText))"
+                                                    class="btn btn-link p-0 align-baseline"
+                                                >
+                                                    {{ $linkText }}
+                                                </button>
+                                            @else
+                                                <a
+                                                    href="{{ $m['url'] }}"
+                                                    target="_blank"
+                                                    class="link-primary text-decoration-none"
+                                                >
+                                                    {{ $linkText }}
+                                                </a>
+                                            @endif
+                                        </div>
+                                        @if(!empty($m['description']))
+                                            <div class="small text-muted text-truncate">{{ $m['description'] }}</div>
+                                        @endif
+                                        <div class="small text-muted">{{ number_format(($m['size'] ?? 0)/1024, 1) }} KB</div>
+                                    @else
+                                        <div class="row g-2">
+                                            <div class="col-12 col-md-6">
+                                                <div class="form-label small mb-1">Caption</div>
+                                                <input
+                                                    type="text"
+                                                    wire:model.defer="editing.{{ $id }}.caption"
+                                                    placeholder="Optional caption"
+                                                    class="form-control form-control-sm"
+                                                />
+                                                @error('editing.'.$id.'.caption')
+                                                <div class="form-text text-danger">{{ $message }}</div>
+                                                @enderror
+                                            </div>
+
+                                            <div class="col-12 col-md-6">
+                                                <div class="form-label small mb-1">Description</div>
+                                                <input
+                                                    type="text"
+                                                    wire:model.defer="editing.{{ $id }}.description"
+                                                    placeholder="Optional description"
+                                                    class="form-control form-control-sm"
+                                                />
+                                                @error('editing.'.$id.'.description')
+                                                <div class="form-text text-danger">{{ $message }}</div>
+                                                @enderror
+                                            </div>
+
+                                            <div class="col-12 col-md-3">
+                                                <div class="form-label small mb-1">Order</div>
+                                                <div style="max-width: 80px;">
+                                                    <input
+                                                        type="number" min="1" step="1"
+                                                        wire:model.defer="editing.{{ $id }}.order"
+                                                        class="form-control form-control-sm text-center"
+                                                    />
+                                                </div>
+                                                @error('editing.'.$id.'.order')
+                                                <div class="form-text text-danger">{{ $message }}</div>
+                                                @enderror
+                                            </div>
+                                        </div>
+                                    @endif
+                                </div>
+
+                                <div class="d-flex gap-2 align-self-stretch align-items-center">
+                                    @if (! $isEditing)
                                         <button
                                             type="button"
-                                            wire:click="saveEdit({{ $id }})"
-                                            wire:loading.attr="disabled"
-                                            class="btn btn-outline-primary btn-sm"
-                                        >
-                                            Save
-                                        </button>
-                                        <button
-                                            type="button"
-                                            wire:click="cancelEdit({{ $id }})"
+                                            wire:click="startEdit({{ $id }})"
                                             class="btn btn-outline-secondary btn-sm"
                                         >
-                                            Cancel
+                                            Edit
                                         </button>
-                                    </div>
-                                @endif
-                            </div>
-                        </li>
-                    @endforeach
-                </ul>
+                                        <button
+                                            type="button"
+                                            wire:click="confirmDelete({{ $id }})"
+                                            wire:loading.attr="disabled"
+                                            class="btn btn-outline-danger btn-sm"
+                                        >
+                                            Delete
+                                        </button>
+                                    @else
+                                        <div class="d-flex gap-2 mt-2 mt-md-0">
+                                            <button
+                                                type="button"
+                                                wire:click="saveEdit({{ $id }})"
+                                                wire:loading.attr="disabled"
+                                                class="btn btn-outline-primary btn-sm"
+                                            >
+                                                Save
+                                            </button>
+                                            <button
+                                                type="button"
+                                                wire:click="cancelEdit({{ $id }})"
+                                                class="btn btn-outline-secondary btn-sm"
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    @endif
+                                </div>
+                            </li>
+                            @endforeach
+                            </ul>
+                    @endif
+                @endif
 
-                <!-- Image Preview Overlay -->
                 <div
                     x-cloak
                     x-show="preview.open"

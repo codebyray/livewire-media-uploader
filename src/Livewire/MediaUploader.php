@@ -43,6 +43,8 @@ class MediaUploader extends Component
     public ?string $theme               = null;
     public ?string $pendingModelClass   = null; // new
     public ?string $channel             = null;
+    public bool    $listAll             = false;
+    public array   $groups              = [];
 
     #[Locked]
     public ?string         $resolvedModelClass = null;
@@ -63,6 +65,7 @@ class MediaUploader extends Component
         array $aliases = null,
         string $attachedFilesTitle = "Attached media",
         ?string $channel = null,
+        bool $listAll = false,
     ): void {
         if ($namespaces !== null) $this->namespaces = $namespaces;
         if ($aliases !== null)    $this->aliases    = $aliases;
@@ -75,6 +78,7 @@ class MediaUploader extends Component
         $this->showList           = $showList;
         $this->maxSizeKb          = $maxSizeKb;
         $this->attachedFilesTitle = $attachedFilesTitle;
+        $this->listAll            = $listAll;
 
         $this->loadPresetFromConfig();
 
@@ -440,34 +444,51 @@ class MediaUploader extends Component
     public function loadItems(): void
     {
         if (! $this->hasTarget()) {
-            $this->items = [];
+            $this->items  = [];
+            $this->groups = [];
             return;
         }
 
-        $model = $this->target();
+        $model      = $this->target();
         $collection = $this->collection ?? 'default';
 
-        $this->items = $model->media()
-            ->where('collection_name', $collection)
-            ->orderBy('order_column')
-            ->get()
-            ->map(function (Media $m) {
-                $thumb = $m->hasGeneratedConversion('thumb') ? $m->getUrl('thumb') : $m->getUrl();
-                return [
-                    'id'          => $m->id,
-                    'file_name'   => $m->file_name,
-                    'name'        => $m->name,
-                    'url'         => $m->getUrl(),
-                    'thumb'       => $thumb,
-                    'size'        => $m->size,
-                    'mime'        => $m->mime_type,
-                    'created'     => $m->created_at?->toDateTimeString(),
-                    'caption'     => $m->getCustomProperty('caption'),
-                    'description' => $m->getCustomProperty('description'),
-                    'order'       => (int) $m->order_column,
-                ];
-            })->toArray();
+        $query = $model->media()->orderBy('order_column')->orderBy('id');
+
+        if (! $this->listAll) {
+            $query->where('collection_name', $collection);
+        } else {
+            $query->orderBy('collection_name');
+        }
+
+        $media = $query->get();
+
+        $flat = $media->map(function (Media $m) {
+            $thumb = $m->hasGeneratedConversion('thumb') ? $m->getUrl('thumb') : $m->getUrl();
+            return [
+                'id'          => $m->id,
+                'file_name'   => $m->file_name,
+                'name'        => $m->name,
+                'url'         => $m->getUrl(),
+                'thumb'       => $thumb,
+                'size'        => $m->size,
+                'mime'        => $m->mime_type,
+                'created'     => $m->created_at?->toDateTimeString(),
+                'caption'     => $m->getCustomProperty('caption'),
+                'description' => $m->getCustomProperty('description'),
+                'order'       => (int) $m->order_column,
+                'collection'  => $m->collection_name, // <— important for grouping
+                'is_image'    => str_starts_with((string) $m->mime_type, 'image/'),
+            ];
+        })->values()->all();
+
+        $this->items = $flat;
+
+        $this->groups = collect($flat)
+            ->groupBy('collection')
+            ->map(fn ($c) => $c->values()->all())
+            ->toArray();
     }
+
 
     public function startEdit(int $mediaId): void
     {
