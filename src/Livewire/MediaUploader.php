@@ -41,7 +41,7 @@ class MediaUploader extends Component
     public ?int    $confirmingDeleteId  = null;
     public string  $allowedLabel        = '';
     public ?string $theme               = null;
-    public ?string $pendingModelClass   = null; // new
+    public ?string $pendingModelClass   = null;
     public ?string $channel             = null;
     public bool    $listAll             = false;
     public array   $groups              = [];
@@ -136,7 +136,7 @@ class MediaUploader extends Component
         }
 
         // Editing an existing model: read current max order from DB
-        $model = $this->target();           // now non-null
+        $model = $this->target();
         $collection = $this->collection ?? 'default';
 
         $max = (int) ($model->media()
@@ -292,17 +292,19 @@ class MediaUploader extends Component
         $perFileRules = ['required', $fileRule];
         if (!empty($this->allowedMimes)) $perFileRules[] = 'mimetypes:' . implode(',', $this->allowedMimes);
 
-        $this->validate([
-                            'uploads'   => ['required', 'array'],
-                            'uploads.*' => $perFileRules,
-                        ] + $this->queueMetaRules());
+        $this->validate(
+            [
+                'uploads'   => ['required', 'array'],
+                'uploads.*' => $perFileRules,
+            ] + $this->queueMetaRules()
+        );
 
         if (! $this->hasTarget()) {
             session()->flash('media_uploader_notice', 'Files queued. They will be attached after you save.');
             return;
         }
 
-        $model = $this->target();
+        $model      = $this->target();
         $collection = $this->collection ?? 'default';
         $added      = $replaced = $skipped = $renamed = 0;
 
@@ -373,7 +375,7 @@ class MediaUploader extends Component
         int|string $id,
         ?string $collection = null,
         ?string $disk = null,
-        ?string $channel = null,           // <— NEW
+        ?string $channel = null,
     ): void {
         if ($this->channel && $channel && $channel !== $this->channel) {
             return;
