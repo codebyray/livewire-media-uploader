@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\On;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
@@ -40,9 +41,13 @@ class MediaUploader extends Component
     public ?int    $confirmingDeleteId  = null;
     public string  $allowedLabel        = '';
     public ?string $theme               = null;
+    public ?string $pendingModelClass   = null; // new
+    public ?string $channel             = null;
 
-    #[Locked] public string $resolvedModelClass;
-    #[Locked] public int|string $resolvedModelId;
+    #[Locked]
+    public ?string         $resolvedModelClass = null;
+    #[Locked]
+    public int|string|null $resolvedModelId    = null;
 
     public function mount(
         $for = null,
@@ -57,10 +62,12 @@ class MediaUploader extends Component
         array $namespaces = null,
         array $aliases = null,
         string $attachedFilesTitle = "Attached media",
+        ?string $channel = null,
     ): void {
         if ($namespaces !== null) $this->namespaces = $namespaces;
         if ($aliases !== null)    $this->aliases    = $aliases;
 
+        $this->channel            = $channel;
         $this->collection         = $collection ?: 'images';
         $this->disk               = $disk;
         $this->multiple           = $multiple;
@@ -74,22 +81,28 @@ class MediaUploader extends Component
         if ($for instanceof Model) {
             if (! $for->exists) abort(422, 'Target model must be saved before attaching media.');
             if (! $for instanceof HasMedia) abort(422, class_basename($for) . ' must implement Spatie\\MediaLibrary\\HasMedia.');
-
             $this->resolvedModelClass = $for::class;
             $this->resolvedModelId    = (string) $for->getKey();
-        } else {
-            if (! $model || $id === null) abort(422, 'Provide either :for="$model" or model + id.');
-
+        } elseif ($model) {
             $fqcn = $this->resolveModelClass($model);
             if (! in_array(HasMedia::class, class_implements($fqcn), true)) {
                 abort(422, class_basename($fqcn) . ' must implement Spatie\\MediaLibrary\\HasMedia.');
             }
-            $fqcn::findOrFail($id);
-            $this->resolvedModelClass = $fqcn;
-            $this->resolvedModelId    = (string) $id;
+            if ($id !== null) {
+                $fqcn::findOrFail($id);
+                $this->resolvedModelClass = $fqcn;
+                $this->resolvedModelId    = (string) $id;
+            } else {
+                // PENDING: we only know the class for now
+                $this->pendingModelClass = $fqcn;
+            }
+        } else {
+            abort(422, 'Provide either :for="$model" or model="Class" (id optional).');
         }
 
-        if ($this->showList) $this->loadItems();
+        if ($this->showList && $this->hasTarget()) {
+            $this->loadItems();
+        }
     }
 
     protected function metaRules(int $mediaId): array
@@ -200,8 +213,16 @@ class MediaUploader extends Component
         abort(422, "Unknown model class/alias [{$value}].");
     }
 
-    protected function target(): Model
+    protected function hasTarget(): bool
     {
+        return !empty($this->resolvedModelClass)
+            && $this->resolvedModelId !== null
+            && $this->resolvedModelId !== '';
+    }
+
+    protected function target(): ?Model
+    {
+        if (! $this->hasTarget()) return null;
         $cls = $this->resolvedModelClass;
         return $cls::findOrFail($this->resolvedModelId);
     }
@@ -256,9 +277,14 @@ class MediaUploader extends Component
                             'uploads.*' => $perFileRules,
                         ] + $this->queueMetaRules());
 
+        if (! $this->hasTarget()) {
+            session()->flash('media_uploader_notice', 'Files queued. They will be attached after you save.');
+            return;
+        }
+
         $model      = $this->target();
         $collection = $this->collection ?? 'default';
-        $added = $replaced = $skipped = $renamed = 0;
+        $added      = $replaced = $skipped = $renamed = 0;
 
         foreach ($this->uploads as $i => $file) {
             $originalName = method_exists($file, 'getClientOriginalName')
@@ -321,6 +347,47 @@ class MediaUploader extends Component
         session()->flash('media_uploader_notice', $msg);
     }
 
+    #[On('media:attach')]
+    public function attachTo(
+        string $model,
+        int|string $id,
+        ?string $collection = null,
+        ?string $disk = null,
+        ?string $channel = null // optional scoping
+    ): void {
+        // If you use channels, ignore events for other uploaders
+        if ($this->channel && $this->channel !== $channel) return;
+
+        $fqcn = $this->resolveModelClass($model);
+        if (! in_array(HasMedia::class, class_implements($fqcn), true)) {
+            abort(422, class_basename($fqcn) . ' must implement Spatie\\MediaLibrary\\HasMedia.');
+        }
+        $fqcn::findOrFail($id);
+
+        $this->resolvedModelClass = $fqcn;
+        $this->resolvedModelId    = (string) $id;
+
+        $originalCollection = $this->collection;
+        $originalDisk       = $this->disk;
+        if ($collection) $this->collection = $collection;
+        if ($disk)       $this->disk       = $disk;
+
+        if (empty($this->uploads)) {
+            // Nothing queued; just let the parent know we’re ready
+            $this->dispatch('media-attached', model: $fqcn, id: (string) $id);
+            $this->collection = $originalCollection;
+            $this->disk       = $originalDisk;
+            return;
+        }
+
+        $this->uploadFiles(); // will now succeed because target is set
+
+        $this->collection = $originalCollection;
+        $this->disk       = $originalDisk;
+
+        $this->dispatch('media-attached', model: $fqcn, id: (string) $id);
+    }
+
     public function remove(int $mediaId): void
     {
         $media = Media::findOrFail($mediaId);
@@ -360,6 +427,11 @@ class MediaUploader extends Component
 
     public function loadItems(): void
     {
+        if (! $this->hasTarget()) {
+            $this->items = [];
+            return;
+        }
+
         $model = $this->target();
         $collection = $this->collection ?? 'default';
 
