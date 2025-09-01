@@ -283,161 +283,332 @@
                     <p class="text-sm text-neutral-500 dark:text-neutral-400 mb-0">No gallery images yet.</p>
                 </div>
             @else
-                <ul class="divide-y divide-neutral-200 dark:divide-neutral-800">
-                    @foreach ($items as $m)
-                        @php
-                            $id = (int) $m['id'];
-                            $isEditing = isset($editing[$id]);
-                            $linkText = $m['caption'] ?: ($m['name'] ?: ($m['original_name'] ?? $m['file_name']));
-                        @endphp
+                @if (!empty($listAll) && $listAll && !empty($groups))
+                    {{-- GROUPED BY COLLECTION --}}
+                    @foreach ($groups as $collectionName => $collectionItems)
+                        {{-- Group header --}}
+                        <div class="px-4 py-2 bg-neutral-50 dark:bg-neutral-800/50 border-b border-neutral-200 dark:border-neutral-800">
+                            <div class="text-[11px] font-semibold tracking-wide uppercase text-neutral-500 dark:text-neutral-400">
+                                {{ $collectionName }}
+                            </div>
+                        </div>
 
-                        <li class="p-3 flex content-center gap-3">
-                            {{-- Thumbnail / icon --}}
-                            @if(!empty($m['thumb']))
-                                <img src="{{ $m['thumb'] }}" alt="" class="rounded-md object-cover w-16 h-16 border border-neutral-200 dark:border-neutral-700">
-                            @else
-                                <div class="rounded-md w-16 h-16 grid place-items-center border border-neutral-200 dark:border-neutral-700 text-neutral-400 dark:text-neutral-500">
-                                    <svg viewBox="0 0 24 24" class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="1.5">
-                                        <path d="M7 3h6l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
-                                        <path d="M13 3v5h5"/>
-                                    </svg>
-                                </div>
-                            @endif
+                        <ul class="divide-y divide-neutral-200 dark:divide-neutral-800">
+                            @foreach ($collectionItems as $m)
+                                @php
+                                    $id = (int) $m['id'];
+                                    $isEditing = isset($editing[$id]);
+                                    $linkText = $m['caption'] ?: ($m['name'] ?: ($m['original_name'] ?? $m['file_name']));
+                                    $isImage = \Illuminate\Support\Str::startsWith($m['mime'] ?? '', 'image/');
+                                @endphp
 
-                            {{-- Content --}}
-                            <div class="flex-1 min-w-0 max-w-full">
-                                @if (! $isEditing)
-                                    @php
-                                        $isImage = \Illuminate\Support\Str::startsWith($m['mime'] ?? '', 'image/');
-                                    @endphp
+                                <li class="p-3 flex content-center gap-3">
+                                    {{-- Thumbnail / icon --}}
+                                    @if(!empty($m['thumb']))
+                                        <img src="{{ $m['thumb'] }}" alt="" class="rounded-md object-cover w-16 h-16 border border-neutral-200 dark:border-neutral-700">
+                                    @else
+                                        <div class="rounded-md w-16 h-16 grid place-items-center border border-neutral-200 dark:border-neutral-700 text-neutral-400 dark:text-neutral-500">
+                                            <svg viewBox="0 0 24 24" class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="1.5">
+                                                <path d="M7 3h6l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
+                                                <path d="M13 3v5h5"/>
+                                            </svg>
+                                        </div>
+                                    @endif
 
-                                    <div class="font-semibold truncate">
-                                        @if ($isImage)
-                                            <button
-                                                type="button"
-                                                @click="openPreview(@js($m['url']), @js($linkText))"
-                                                class="cursor-pointer text-emerald-700 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-200"
-                                            >
-                                                {{ $linkText }}
-                                            </button>
+                                    {{-- Content --}}
+                                    <div class="flex-1 min-w-0 max-w-full">
+                                        @if (! $isEditing)
+                                            <div class="font-semibold truncate">
+                                                @if ($isImage)
+                                                    <button
+                                                        type="button"
+                                                        @click="openPreview(@js($m['url']), @js($linkText))"
+                                                        class="cursor-pointer text-emerald-700 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-200"
+                                                    >
+                                                        {{ $linkText }}
+                                                    </button>
+                                                @else
+                                                    <a
+                                                        href="{{ $m['url'] }}"
+                                                        target="_blank"
+                                                        class="cursor-pointer text-emerald-700 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-200"
+                                                    >
+                                                        {{ $linkText }}
+                                                    </a>
+                                                @endif
+                                            </div>
+
+                                            {{-- Optional description --}}
+                                            @if(!empty($m['description']))
+                                                <div class="text-sm text-neutral-500 dark:text-neutral-400 truncate">{{ $m['description'] }}</div>
+                                            @endif
+
+                                            {{-- Size + collection name meta --}}
+                                            <div class="text-xs text-neutral-500 dark:text-neutral-400">
+                                                {{ number_format(($m['size'] ?? 0)/1024, 1) }} KB
+                                                @if(!empty($m['collection']))
+                                                    <span class="mx-2">•</span>
+                                                    <span class="uppercase">{{ $m['collection'] }}</span>
+                                                @endif
+                                            </div>
                                         @else
-                                            <a
-                                                href="{{ $m['url'] }}"
-                                                target="_blank"
-                                                class="cursor-pointer text-emerald-700 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-200"
-                                            >
-                                                {{ $linkText }}
-                                            </a>
+                                            <div class="grid grid-cols-1 md:[grid-template-columns:1fr_2fr_auto] gap-2 max-w-full">
+                                                <div>
+                                                    <div class="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Caption</div>
+                                                    <input
+                                                        type="text"
+                                                        wire:model.defer="editing.{{ $id }}.caption"
+                                                        placeholder="Optional caption"
+                                                        class="block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm
+                                                   text-neutral-900 placeholder-neutral-400
+                                                   focus:outline-none focus:ring-2 focus:ring-sky-500
+                                                   dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-100 dark:placeholder-neutral-500"
+                                                    />
+                                                    @error('editing.'.$id.'.caption')
+                                                    <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+                                                    @enderror
+                                                </div>
+
+                                                <div>
+                                                    <div class="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Description</div>
+                                                    <input
+                                                        type="text"
+                                                        wire:model.defer="editing.{{ $id }}.description"
+                                                        placeholder="Optional description"
+                                                        class="block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm
+                                                   text-neutral-900 placeholder-neutral-400
+                                                   focus:outline-none focus:ring-2 focus:ring-sky-500
+                                                   dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-100 dark:placeholder-neutral-500"
+                                                    />
+                                                    @error('editing.'.$id.'.description')
+                                                    <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+                                                    @enderror
+                                                </div>
+
+                                                <div>
+                                                    <div class="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Order</div>
+                                                    <div class="w-20">
+                                                        <input
+                                                            type="number" min="1" step="1"
+                                                            wire:model.defer="editing.{{ $id }}.order"
+                                                            class="block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-center
+                                                       text-neutral-900 placeholder-neutral-400
+                                                       focus:outline-none focus:ring-2 focus:ring-sky-500
+                                                       dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-100 dark:placeholder-neutral-500"
+                                                        />
+                                                    </div>
+                                                    @error('editing.'.$id.'.order')
+                                                    <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+                                                    @enderror
+                                                </div>
+                                            </div>
                                         @endif
                                     </div>
-                                    @if(!empty($m['description']))
-                                        <div class="text-sm text-neutral-500 dark:text-neutral-400 truncate">{{ $m['description'] }}</div>
-                                    @endif
-                                    <div class="text-xs text-neutral-500 dark:text-neutral-400">{{ number_format(($m['size'] ?? 0)/1024, 1) }} KB</div>
-                                @else
-                                    <div class="grid grid-cols-1 md:[grid-template-columns:1fr_2fr_auto] gap-2 max-w-full">
-                                        <div>
-                                            <div class="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Caption</div>
-                                            <input
-                                                type="text"
-                                                wire:model.defer="editing.{{ $id }}.caption"
-                                                placeholder="Optional caption"
-                                                class="block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm
-                                                       text-neutral-900 placeholder-neutral-400
-                                                       focus:outline-none focus:ring-2 focus:ring-sky-500
-                                                       dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-100 dark:placeholder-neutral-500"
-                                            />
-                                            @error('editing.'.$id.'.caption')
-                                            <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
-                                            @enderror
-                                        </div>
 
-                                        <div>
-                                            <div class="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Description</div>
-                                            <input
-                                                type="text"
-                                                wire:model.defer="editing.{{ $id }}.description"
-                                                placeholder="Optional description"
-                                                class="block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm
-                                                       text-neutral-900 placeholder-neutral-400
-                                                       focus:outline-none focus:ring-2 focus:ring-sky-500
-                                                       dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-100 dark:placeholder-neutral-500"
-                                            />
-                                            @error('editing.'.$id.'.description')
-                                            <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
-                                            @enderror
-                                        </div>
-
-                                        <div>
-                                            <div class="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Order</div>
-                                            <div class="w-20">
-                                                <input
-                                                    type="number" min="1" step="1"
-                                                    wire:model.defer="editing.{{ $id }}.order"
-                                                    class="block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-center
-                                                           text-neutral-900 placeholder-neutral-400
-                                                           focus:outline-none focus:ring-2 focus:ring-sky-500
-                                                           dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-100 dark:placeholder-neutral-500"
-                                                />
-                                            </div>
-                                            @error('editing.'.$id.'.order')
-                                            <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
-                                            @enderror
-                                        </div>
-                                    </div>
-                                @endif
-                            </div>
-
-                            <div class="flex gap-2 self-stretch md:items-center">
-                                @if (! $isEditing)
-                                    <button
-                                        type="button"
-                                        wire:click="startEdit({{ $id }})"
-                                        class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium
+                                    <div class="flex gap-2 self-stretch md:items-center">
+                                        @if (! $isEditing)
+                                            <button
+                                                type="button"
+                                                wire:click="startEdit({{ $id }})"
+                                                class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium
+                                           hover:bg-neutral-100 text-neutral-700
+                                           dark:text-neutral-200 dark:hover:bg-neutral-800"
+                                            >
+                                                Edit
+                                            </button>
+                                            <button
+                                                type="button"
+                                                wire:click="confirmDelete({{ $id }})"
+                                                wire:loading.attr="disabled"
+                                                class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium
+                                           border border-red-500 text-red-600 hover:bg-red-50
+                                           dark:border-red-600 dark:text-red-400 dark:hover:bg-red-900/20"
+                                            >
+                                                Delete
+                                            </button>
+                                        @else
+                                            <div class="flex items-center gap-2 self-stretch mt-4">
+                                                <button
+                                                    type="button"
+                                                    wire:click="saveEdit({{ $id }})"
+                                                    wire:loading.attr="disabled"
+                                                    class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium
+                                               border border-sky-500 text-sky-600 hover:bg-sky-50
+                                               dark:border-sky-600 dark:text-sky-400 dark:hover:bg-sky-900/20"
+                                                >
+                                                    Save
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    wire:click="cancelEdit({{ $id }})"
+                                                    class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium
                                                hover:bg-neutral-100 text-neutral-700
                                                dark:text-neutral-200 dark:hover:bg-neutral-800"
-                                    >
-                                        Edit
-                                    </button>
-                                    <button
-                                        type="button"
-                                        wire:click="confirmDelete({{ $id }})"
-                                        wire:loading.attr="disabled"
-                                        class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium
-                                               border border-red-500 text-red-600 hover:bg-red-50
-                                               dark:border-red-600 dark:text-red-400 dark:hover:bg-red-900/20"
-                                    >
-                                        Delete
-                                    </button>
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        @endif
+                                    </div>
+                                </li>
+                            @endforeach
+                        </ul>
+                    @endforeach
+                @else
+                    {{-- SINGLE COLLECTION (original rendering) --}}
+                    <ul class="divide-y divide-neutral-200 dark:divide-neutral-800">
+                        @foreach ($items as $m)
+                            @php
+                                $id = (int) $m['id'];
+                                $isEditing = isset($editing[$id]);
+                                $linkText = $m['caption'] ?: ($m['name'] ?: ($m['original_name'] ?? $m['file_name']));
+                                $isImage = \Illuminate\Support\Str::startsWith($m['mime'] ?? '', 'image/');
+                            @endphp
+
+                            <li class="p-3 flex content-center gap-3">
+                                {{-- Thumbnail / icon --}}
+                                @if(!empty($m['thumb']))
+                                    <img src="{{ $m['thumb'] }}" alt="" class="rounded-md object-cover w-16 h-16 border border-neutral-200 dark:border-neutral-700">
                                 @else
-                                    <div class="flex items-center gap-2 self-stretch mt-4">
-                                        <button
-                                            type="button"
-                                            wire:click="saveEdit({{ $id }})"
-                                            wire:loading.attr="disabled"
-                                            class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium
-                                                   border border-sky-500 text-sky-600 hover:bg-sky-50
-                                                   dark:border-sky-600 dark:text-sky-400 dark:hover:bg-sky-900/20"
-                                        >
-                                            Save
-                                        </button>
-                                        <button
-                                            type="button"
-                                            wire:click="cancelEdit({{ $id }})"
-                                            class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium
-                                                   hover:bg-neutral-100 text-neutral-700
-                                                   dark:text-neutral-200 dark:hover:bg-neutral-800"
-                                        >
-                                            Cancel
-                                        </button>
+                                    <div class="rounded-md w-16 h-16 grid place-items-center border border-neutral-200 dark:border-neutral-700 text-neutral-400 dark:text-neutral-500">
+                                        <svg viewBox="0 0 24 24" class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="1.5">
+                                            <path d="M7 3h6l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
+                                            <path d="M13 3v5h5"/>
+                                        </svg>
                                     </div>
                                 @endif
-                            </div>
-                        </li>
-                    @endforeach
-                </ul>
 
-                <!-- Image Preview Overlay -->
+                                {{-- Content --}}
+                                <div class="flex-1 min-w-0 max-w-full">
+                                    @if (! $isEditing)
+                                        <div class="font-semibold truncate">
+                                            @if ($isImage)
+                                                <button
+                                                    type="button"
+                                                    @click="openPreview(@js($m['url']), @js($linkText))"
+                                                    class="cursor-pointer text-emerald-700 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-200"
+                                                >
+                                                    {{ $linkText }}
+                                                </button>
+                                            @else
+                                                <a
+                                                    href="{{ $m['url'] }}"
+                                                    target="_blank"
+                                                    class="cursor-pointer text-emerald-700 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-200"
+                                                >
+                                                    {{ $linkText }}
+                                                </a>
+                                            @endif
+                                        </div>
+                                        @if(!empty($m['description']))
+                                            <div class="text-sm text-neutral-500 dark:text-neutral-400 truncate">{{ $m['description'] }}</div>
+                                        @endif
+                                        <div class="text-xs text-neutral-500 dark:text-neutral-400">{{ number_format(($m['size'] ?? 0)/1024, 1) }} KB</div>
+                                    @else
+                                        <div class="grid grid-cols-1 md:[grid-template-columns:1fr_2fr_auto] gap-2 max-w-full">
+                                            <div>
+                                                <div class="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Caption</div>
+                                                <input
+                                                    type="text"
+                                                    wire:model.defer="editing.{{ $id }}.caption"
+                                                    placeholder="Optional caption"
+                                                    class="block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm
+                                               text-neutral-900 placeholder-neutral-400
+                                               focus:outline-none focus:ring-2 focus:ring-sky-500
+                                               dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-100 dark:placeholder-neutral-500"
+                                                />
+                                                @error('editing.'.$id.'.caption')
+                                                <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+                                                @enderror
+                                            </div>
+
+                                            <div>
+                                                <div class="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Description</div>
+                                                <input
+                                                    type="text"
+                                                    wire:model.defer="editing.{{ $id }}.description"
+                                                    placeholder="Optional description"
+                                                    class="block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm
+                                               text-neutral-900 placeholder-neutral-400
+                                               focus:outline-none focus:ring-2 focus:ring-sky-500
+                                               dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-100 dark:placeholder-neutral-500"
+                                                />
+                                                @error('editing.'.$id.'.description')
+                                                <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+                                                @enderror
+                                            </div>
+
+                                            <div>
+                                                <div class="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Order</div>
+                                                <div class="w-20">
+                                                    <input
+                                                        type="number" min="1" step="1"
+                                                        wire:model.defer="editing.{{ $id }}.order"
+                                                        class="block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-center
+                                                   text-neutral-900 placeholder-neutral-400
+                                                   focus:outline-none focus:ring-2 focus:ring-sky-500
+                                                   dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-100 dark:placeholder-neutral-500"
+                                                    />
+                                                </div>
+                                                @error('editing.'.$id.'.order')
+                                                <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+                                                @enderror
+                                            </div>
+                                        </div>
+                                    @endif
+                                </div>
+
+                                <div class="flex gap-2 self-stretch md:items-center">
+                                    @if (! $isEditing)
+                                        <button
+                                            type="button"
+                                            wire:click="startEdit({{ $id }})"
+                                            class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium
+                                            hover:bg-neutral-100 text-neutral-700
+                                            dark:text-neutral-200 dark:hover:bg-neutral-800"
+                                        >
+                                            Edit
+                                        </button>
+                                        <button
+                                            type="button"
+                                            wire:click="confirmDelete({{ $id }})"
+                                            wire:loading.attr="disabled"
+                                            class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium
+                                            border border-red-500 text-red-600 hover:bg-red-50
+                                            dark:border-red-600 dark:text-red-400 dark:hover:bg-red-900/20"
+                                        >
+                                            Delete
+                                        </button>
+                                    @else
+                                        <div class="flex items-center gap-2 self-stretch mt-4">
+                                            <button
+                                                type="button"
+                                                wire:click="saveEdit({{ $id }})"
+                                                wire:loading.attr="disabled"
+                                                class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium
+                                               border border-sky-500 text-sky-600 hover:bg-sky-50
+                                               dark:border-sky-600 dark:text-sky-400 dark:hover:bg-sky-900/20"
+                                            >
+                                                Save
+                                            </button>
+                                            <button
+                                                type="button"
+                                                wire:click="cancelEdit({{ $id }})"
+                                                class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium
+                                               hover:bg-neutral-100 text-neutral-700
+                                               dark:text-neutral-200 dark:hover:bg-neutral-800"
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    @endif
+                                </div>
+                            </li>
+                        @endforeach
+                    </ul>
+                @endif
+
+                <!-- Image Preview Overlay (kept as-is) -->
                 <div
                     x-cloak
                     x-show="preview.open"
@@ -446,30 +617,26 @@
                     class="fixed inset-0 z-[60]"
                     aria-modal="true" role="dialog" aria-label="Image preview"
                 >
-                    <!-- Backdrop -->
                     <div class="absolute inset-0 bg-black/80" @click="closePreview()"></div>
-
                     <button
                         type="button"
                         @click="closePreview()"
                         class="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-lg
-                               bg-white/90 text-neutral-700 shadow hover:bg-white
-                               dark:bg-neutral-800/90 dark:text-neutral-200 dark:hover:bg-neutral-800"
+                       bg-white/90 text-neutral-700 shadow hover:bg-white
+                       dark:bg-neutral-800/90 dark:text-neutral-200 dark:hover:bg-neutral-800"
                         aria-label="Close preview"
                     >
                         <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6L6 18"/>
                         </svg>
                     </button>
-
-                    <!-- Panel -->
                     <div class="relative mx-auto h-full w-full max-w-5xl">
                         <div class="flex h-full items-center justify-center p-6">
                             <img
                                 :src="preview.url"
                                 :alt="preview.alt"
                                 class="max-h-[85vh] max-w-[90vw] rounded-xl border border-neutral-200 bg-white object-contain shadow-lg
-                                       dark:border-neutral-700 dark:bg-neutral-900"
+                                dark:border-neutral-700 dark:bg-neutral-900"
                                 @click.stop
                                 loading="eager"
                                 decoding="async"
@@ -478,7 +645,6 @@
                     </div>
                 </div>
 
-                {{-- Delete confirmation modal --}}
                 <div
                     x-cloak
                     x-data
@@ -489,7 +655,6 @@
                     aria-modal="true" role="dialog" aria-labelledby="delete-modal-title"
                 >
                     <div class="absolute inset-0 bg-black/80" @click="$wire.cancelDelete()"></div>
-
                     <div class="relative mx-auto mt-24 w-full max-w-md rounded-xl bg-white p-4 shadow-lg dark:bg-neutral-900 border dark:border-neutral-700">
                         @php
                             $toDelete = null;
@@ -497,7 +662,6 @@
                                 $toDelete = collect($items)->firstWhere('id', $confirmingDeleteId);
                             }
                         @endphp
-
                         <div class="flex items-start gap-3">
                             <div>
                                 @if($toDelete && !empty($toDelete['thumb']))
@@ -511,7 +675,6 @@
                                     </div>
                                 @endif
                             </div>
-
                             <div class="flex-1 min-w-0">
                                 <h3 id="delete-modal-title" class="text-base font-semibold text-neutral-900 dark:text-neutral-100">
                                     Delete this file?
@@ -524,14 +687,13 @@
                                 </p>
                             </div>
                         </div>
-
                         <div class="mt-4 flex justify-end gap-2">
                             <button
                                 type="button"
                                 wire:click="cancelDelete"
                                 class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium
-                                       bg-neutral-100 text-neutral-800 hover:bg-neutral-200
-                                       dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+                               bg-neutral-100 text-neutral-800 hover:bg-neutral-200
+                               dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
                             >
                                 Cancel
                             </button>
@@ -540,9 +702,9 @@
                                 wire:click="deleteConfirmed()"
                                 wire:loading.attr="disabled"
                                 class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium
-                                       bg-red-600 text-white hover:bg-red-500
-                                       focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600/50
-                                       disabled:opacity-60"
+                               bg-red-600 text-white hover:bg-red-500
+                               focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600/50
+                               disabled:opacity-60"
                             >
                                 Delete
                             </button>
