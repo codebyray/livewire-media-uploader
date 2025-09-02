@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## [Unreleased]
+### Added
+
+### Changed
+
+### Fixed
+
+---
+## [v0.3.0] — 2025-09-01
 
 ### Added
 - **Deferred uploads on create**: You can now queue files before the target model exists and attach them after save by dispatching the `media:attach` event. The uploader accepts `model="post"` (no `id`) on create screens, holds the queue + per-file meta, and attaches once you dispatch. Emits `media-attached` when done.
@@ -22,7 +30,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - N/A
-
 ---
 ## [v0.2.0] — 2025-09-01
 
