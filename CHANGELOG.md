@@ -11,12 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-
+- **Deferred uploads on create**: You can now queue files before the target model exists and attach them after save by dispatching the `media:attach` event. The uploader accepts `model="post"` (no `id`) on create screens, holds the queue + per-file meta, and attaches once you dispatch. Emits `media-attached` when done.
+- **`list-all` view**: Set `:list-all="true"` to show **all collections** for the current model in a single list, grouped by collection name. Items remain fully editable (caption/description/order).
+- **Tailwind dark mode docs/snippets**: Added guidance and examples for enabling global light/dark mode with the Tailwind theme.
 
 ### Changed
+- Graceful “no target yet” behavior on create screens:
+    - `nextOrder()` now derives order from the local queue if the model isn’t saved yet.
+    - `uploadFiles()` **queues** when there’s no target (instead of erroring) and flashes: _“Files queued. They will be attached after you save.”_
 
 ### Fixed
-
+- N/A
 
 ---
 ## [v0.2.0] — 2025-09-01
@@ -95,5 +100,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/codebyray/livewire-media-uploader/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/codebyray/livewire-media-uploader/compare/v0.2.0...HEAD
 [v0.1.0]: https://github.com/codebyray/livewire-media-uploader/releases/tag/v0.1.0

@@ -10,8 +10,12 @@ Livewire Media Uploader is a reusable Livewire v3 component that integrates seam
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Publishing Assets](#publishing-assets)
+- [Theme System](#theme-system-tailwind--bootstrap--custom)
+  - [Dark Mode - Tailwind](#dark-mode-tailwind-theme)
+  - [Custom Theme](#custom-themes)
 - [Quick Start](#quick-start)
 - [Usage Examples](#usage-examples)
+  - [Create flow (deferred uploads)](#create-flow-deferred-uploads)
 - [Configuration](#configuration)
 - [Props](#props)
 - [Events](#events)
@@ -111,6 +115,19 @@ return [
     ],
     // ...
 ];
+```
+### Dark mode (Tailwind theme)
+This package’s Tailwind theme is dark-ready. Add this tiny snippet in your main layout `<head>` to apply the user’s saved choice / system default:
+
+```html
+<script>
+    (() => {
+        const t = localStorage.theme ?? 'system';
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const dark = t === 'dark' || (t === 'system' && prefersDark);
+        if (dark) document.documentElement.classList.add('dark');
+    })();
+</script>
 ```
 ### Custom themes
 - Copy an existing theme directory (e.g. themes/tailwind) to themes/custom and edit the Blade.
@@ -293,7 +310,75 @@ MEDIA_MAXKB_DEFAULT=10240
         :maxSizeKb="5120"
     />
     ```
+### Create flow (deferred uploads)
 
+You can let users pick files **before** the model exists, and attach them **after** save.
+
+**Blade (create page)**
+```html
+<!-- Note: pass model class/alias without id -->
+<livewire:media-uploader
+    model="post"
+    collection="images"
+    preset="images"
+    :multiple="true"
+    :showList="true"
+/>
+```
+#### Livewire component (simplified)
+```php
+use App\Models\Post;
+use Illuminate\Support\Facades\Auth;
+use Livewire\Attributes\On;
+use Livewire\Component;
+
+class PostCreate extends Component
+{
+    public string $title = '';
+    public string $body  = '';
+    public ?int $pendingPostId = null;
+
+    protected function rules(): array
+    {
+        return ['title' => 'required|string|max:255', 'body' => 'required|string'];
+    }
+
+    public function save(): void
+    {
+        $post = Post::create([
+            'user_id' => Auth::id(),
+            'title'   => $this->title,
+            'body'    => $this->body,
+        ]);
+
+        // Let uploaders attach everything queued for this collection
+        $this->pendingPostId = $post->id;
+
+        // Fire once per collection rendered on the page
+        $this->dispatch('media:attach', model: 'post', id: $post->id, collection: 'images');
+    }
+
+    #[On('media-attached')]
+    public function afterMediaAttached(string $model, string|int $id): void
+    {
+        if ($this->pendingPostId && (int)$id === (int)$this->pendingPostId) {
+            $this->pendingPostId = null;
+            $this->redirectRoute('posts.show', ['post' => $id], navigate: true);
+        }
+    }
+
+    public function render() { return view('livewire.posts.post-create'); }
+}
+```
+
+#### How it works
+- On create screens, the component accepts model="post" without an id.
+- Files and per-file metadata are queued locally.
+- After you persist the model, dispatch:
+    ```php
+    $this->dispatch('media:attach', model: 'post', id: $post->id, collection: 'images');
+    ```
+- The uploader resolves the saved target, attaches any queued files, and emits media-attached.
 ---
 
 ## Configuration
@@ -314,7 +399,16 @@ Example:
     'attachments' => 'docs',
 ],
 ```
+Show all collections together (grouped)
+Set `:list-all="true"` to render a grouped list of **every collection** on the target model. Items stay fully editable.
 
+```html
+<livewire:media-uploader
+    :for="$post"
+    :list-all="true"
+    :showList="true"
+/>
+```
 The component decides the active preset in this order:
 1. Explicit `$preset` prop
 2. Mapping from `collections`
@@ -343,6 +437,7 @@ The component decides the active preset in this order:
 | `namespaces` | `array` | `['App\\Models']` | Namespaces for dotted-path resolution. |
 | `aliases` | `array` | `[]` | Local alias map, e.g. `['profile' => \App\Models\User::class]`. |
 | `attachedFilesTitle` | `string` | `"Current gallery"` | Heading text in the list card. |
+| `listAll` | `bool` | `false` | When `true`, the attached media list shows **all collections**, grouped by collection name (still editable). |
 
 ---
 
@@ -350,9 +445,11 @@ The component decides the active preset in this order:
 
 The component dispatches browser events you can listen for:
 
-- `media-uploaded` — after an upload completes
-- `media-deleted` — after a deletion (`detail.id` contains the Media ID)
-- `media-meta-updated` — after saving inline metadata
+- `media:attach` — **incoming** event the component listens for. Arguments: `model` (class/alias), `id`, optional `collection`, optional `disk`. Triggers attaching of any queued files to the now-saved target.
+- `media-attached` — emitted after a successful `media:attach`. Payload: `{ model: FQCN, id: string }`.
+- `media-uploaded` — emitted after an immediate upload (when a target already exists).
+- `media-deleted` — emitted after deletion (`detail.id` contains the Media ID).
+- `media-meta-updated` — emitted after inline metadata is saved.
 
 Example:
 ```html

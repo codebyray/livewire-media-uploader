@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\On;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
@@ -40,9 +41,15 @@ class MediaUploader extends Component
     public ?int    $confirmingDeleteId  = null;
     public string  $allowedLabel        = '';
     public ?string $theme               = null;
+    public ?string $pendingModelClass   = null;
+    public ?string $channel             = null;
+    public bool    $listAll             = false;
+    public array   $groups              = [];
 
-    #[Locked] public string $resolvedModelClass;
-    #[Locked] public int|string $resolvedModelId;
+    #[Locked]
+    public ?string         $resolvedModelClass = null;
+    #[Locked]
+    public int|string|null $resolvedModelId    = null;
 
     public function mount(
         $for = null,
@@ -57,10 +64,13 @@ class MediaUploader extends Component
         array $namespaces = null,
         array $aliases = null,
         string $attachedFilesTitle = "Attached media",
+        ?string $channel = null,
+        bool $listAll = false,
     ): void {
         if ($namespaces !== null) $this->namespaces = $namespaces;
         if ($aliases !== null)    $this->aliases    = $aliases;
 
+        $this->channel            = $channel;
         $this->collection         = $collection ?: 'images';
         $this->disk               = $disk;
         $this->multiple           = $multiple;
@@ -68,28 +78,35 @@ class MediaUploader extends Component
         $this->showList           = $showList;
         $this->maxSizeKb          = $maxSizeKb;
         $this->attachedFilesTitle = $attachedFilesTitle;
+        $this->listAll            = $listAll;
 
         $this->loadPresetFromConfig();
 
         if ($for instanceof Model) {
             if (! $for->exists) abort(422, 'Target model must be saved before attaching media.');
             if (! $for instanceof HasMedia) abort(422, class_basename($for) . ' must implement Spatie\\MediaLibrary\\HasMedia.');
-
             $this->resolvedModelClass = $for::class;
             $this->resolvedModelId    = (string) $for->getKey();
-        } else {
-            if (! $model || $id === null) abort(422, 'Provide either :for="$model" or model + id.');
-
+        } elseif ($model) {
             $fqcn = $this->resolveModelClass($model);
             if (! in_array(HasMedia::class, class_implements($fqcn), true)) {
                 abort(422, class_basename($fqcn) . ' must implement Spatie\\MediaLibrary\\HasMedia.');
             }
-            $fqcn::findOrFail($id);
-            $this->resolvedModelClass = $fqcn;
-            $this->resolvedModelId    = (string) $id;
+            if ($id !== null) {
+                $fqcn::findOrFail($id);
+                $this->resolvedModelClass = $fqcn;
+                $this->resolvedModelId    = (string) $id;
+            } else {
+                // PENDING: we only know the class for now
+                $this->pendingModelClass = $fqcn;
+            }
+        } else {
+            abort(422, 'Provide either :for="$model" or model="Class" (id optional).');
         }
 
-        if ($this->showList) $this->loadItems();
+        if ($this->showList && $this->hasTarget()) {
+            $this->loadItems();
+        }
     }
 
     protected function metaRules(int $mediaId): array
@@ -112,13 +129,23 @@ class MediaUploader extends Component
 
     protected function nextOrder(): int
     {
+        // While creating: base order from queued items only
+        if (! $this->hasTarget()) {
+            $maxPending = (int) collect($this->pendingMeta ?? [])->pluck('order')->max();
+            return ($maxPending ?: 0) + 1;
+        }
+
+        // Editing an existing model: read current max order from DB
         $model = $this->target();
         $collection = $this->collection ?? 'default';
 
-        return (int) ($model->media()
-                ->where('collection_name', $collection)
-                ->max('order_column') ?? 0) + 1;
+        $max = (int) ($model->media()
+            ->where('collection_name', $collection)
+            ->max('order_column') ?? 0);
+
+        return $max + 1;
     }
+
 
     protected function csvToArray(?string $csv): array
     {
@@ -200,11 +227,25 @@ class MediaUploader extends Component
         abort(422, "Unknown model class/alias [{$value}].");
     }
 
-    protected function target(): Model
+    protected function hasTarget(): bool
     {
+        // these are typed but may be uninitialized; isset() is safe
+        return isset($this->resolvedModelClass, $this->resolvedModelId)
+            && $this->resolvedModelClass !== ''
+            && $this->resolvedModelId !== null
+            && $this->resolvedModelId !== '';
+    }
+
+
+    // change return type to ?Model
+    protected function target(): ?Model
+    {
+        if (! $this->hasTarget()) return null;
+
         $cls = $this->resolvedModelClass;
         return $cls::findOrFail($this->resolvedModelId);
     }
+
 
     public function updatedUploads(): void
     {
@@ -251,14 +292,21 @@ class MediaUploader extends Component
         $perFileRules = ['required', $fileRule];
         if (!empty($this->allowedMimes)) $perFileRules[] = 'mimetypes:' . implode(',', $this->allowedMimes);
 
-        $this->validate([
-                            'uploads'   => ['required', 'array'],
-                            'uploads.*' => $perFileRules,
-                        ] + $this->queueMetaRules());
+        $this->validate(
+            [
+                'uploads'   => ['required', 'array'],
+                'uploads.*' => $perFileRules,
+            ] + $this->queueMetaRules()
+        );
+
+        if (! $this->hasTarget()) {
+            session()->flash('media_uploader_notice', 'Files queued. They will be attached after you save.');
+            return;
+        }
 
         $model      = $this->target();
         $collection = $this->collection ?? 'default';
-        $added = $replaced = $skipped = $renamed = 0;
+        $added      = $replaced = $skipped = $renamed = 0;
 
         foreach ($this->uploads as $i => $file) {
             $originalName = method_exists($file, 'getClientOriginalName')
@@ -321,6 +369,43 @@ class MediaUploader extends Component
         session()->flash('media_uploader_notice', $msg);
     }
 
+    #[On('media:attach')]
+    public function attachTo(
+        string $model,
+        int|string $id,
+        ?string $collection = null,
+        ?string $disk = null,
+        ?string $channel = null,
+    ): void {
+        if ($this->channel && $channel && $channel !== $this->channel) {
+            return;
+        }
+
+        $fqcn = $this->resolveModelClass($model);
+        if (! in_array(HasMedia::class, class_implements($fqcn), true)) {
+            abort(422, class_basename($fqcn) . ' must implement Spatie\\MediaLibrary\\HasMedia.');
+        }
+        $fqcn::findOrFail($id);
+
+        $this->resolvedModelClass = $fqcn;
+        $this->resolvedModelId    = (string) $id;
+
+        $origCollection = $this->collection;
+        $origDisk       = $this->disk;
+        if ($collection) $this->collection = $collection;
+        if ($disk)       $this->disk       = $disk;
+
+        if (!empty($this->uploads)) {
+            $this->uploadFiles();
+        }
+
+        $this->collection = $origCollection;
+        $this->disk       = $origDisk;
+
+        $this->dispatch('media-attached', model: $fqcn, id: (string) $id, channel: $channel);
+    }
+
+
     public function remove(int $mediaId): void
     {
         $media = Media::findOrFail($mediaId);
@@ -360,30 +445,52 @@ class MediaUploader extends Component
 
     public function loadItems(): void
     {
-        $model = $this->target();
+        if (! $this->hasTarget()) {
+            $this->items  = [];
+            $this->groups = [];
+            return;
+        }
+
+        $model      = $this->target();
         $collection = $this->collection ?? 'default';
 
-        $this->items = $model->media()
-            ->where('collection_name', $collection)
-            ->orderBy('order_column')
-            ->get()
-            ->map(function (Media $m) {
-                $thumb = $m->hasGeneratedConversion('thumb') ? $m->getUrl('thumb') : $m->getUrl();
-                return [
-                    'id'          => $m->id,
-                    'file_name'   => $m->file_name,
-                    'name'        => $m->name,
-                    'url'         => $m->getUrl(),
-                    'thumb'       => $thumb,
-                    'size'        => $m->size,
-                    'mime'        => $m->mime_type,
-                    'created'     => $m->created_at?->toDateTimeString(),
-                    'caption'     => $m->getCustomProperty('caption'),
-                    'description' => $m->getCustomProperty('description'),
-                    'order'       => (int) $m->order_column,
-                ];
-            })->toArray();
+        $query = $model->media()->orderBy('order_column')->orderBy('id');
+
+        if (! $this->listAll) {
+            $query->where('collection_name', $collection);
+        } else {
+            $query->orderBy('collection_name');
+        }
+
+        $media = $query->get();
+
+        $flat = $media->map(function (Media $m) {
+            $thumb = $m->hasGeneratedConversion('thumb') ? $m->getUrl('thumb') : $m->getUrl();
+            return [
+                'id'          => $m->id,
+                'file_name'   => $m->file_name,
+                'name'        => $m->name,
+                'url'         => $m->getUrl(),
+                'thumb'       => $thumb,
+                'size'        => $m->size,
+                'mime'        => $m->mime_type,
+                'created'     => $m->created_at?->toDateTimeString(),
+                'caption'     => $m->getCustomProperty('caption'),
+                'description' => $m->getCustomProperty('description'),
+                'order'       => (int) $m->order_column,
+                'collection'  => $m->collection_name, // <— important for grouping
+                'is_image'    => str_starts_with((string) $m->mime_type, 'image/'),
+            ];
+        })->values()->all();
+
+        $this->items = $flat;
+
+        $this->groups = collect($flat)
+            ->groupBy('collection')
+            ->map(fn ($c) => $c->values()->all())
+            ->toArray();
     }
+
 
     public function startEdit(int $mediaId): void
     {
