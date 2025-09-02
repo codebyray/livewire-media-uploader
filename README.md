@@ -1,3 +1,5 @@
+<img width="2655" height="1419" alt="media_uploader_screenshot" src="https://github.com/user-attachments/assets/0852d2c2-762a-440c-ad61-8c0b6939f930" />
+
 # Livewire Media Uploader
 
 Livewire Media Uploader is a reusable Livewire v3 component that integrates seamlessly with Spatie Laravel Media Library. It ships a clean Tailwind Blade view by default (fully publishable), Bootstrap theme as an option, Alpine overlays for previews/confirmations, drag-and-drop uploads, per-file metadata (caption/description/order), configurable presets, name-conflict strategies, and optional SHA-256 duplicate detection. Drop it in, point it at a model, and you’re shipping in minutes.
