@@ -10,12 +10,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- 
 
 ### Changed
+- 
 
 ### Fixed
+- 
 
 ---
+
+## [v0.4.0] — 2026-07-15
+
+### Added
+- **`NameConflictStrategy` Enum**: Introduced a strongly-typed Enum for handling name conflicts (`RENAME`, `REPLACE`, `SKIP`, `ALLOW`), replacing raw string checks.
+- **Custom `ModelResolutionException`**: Replaced generic `abort()` calls with a dedicated exception for clearer debugging when model binding fails.
+
+### Changed
+- **Configurable Namespaces**: The component now resolves models using the `model_namespaces` configuration array instead of hardcoded `App\Models` strings, allowing for better support in modular/domain-driven architectures.
+- **Validation Refactor**: Centralized upload validation into a dedicated `rules()` method, simplifying the `uploadFiles()` logic and improving maintainability.
+
+### Fixed
+- Improved exception handling in test suite to correctly capture and assert custom package exceptions.
+- Resolved potential `MassAssignmentException` issues in tests when instantiating standard User models.
+
+## [v0.4.0] — 2026-07-15
+
+### Added
+- **`NameConflictStrategy` Enum**: Introduced a strongly-typed Enum for handling name conflicts (`RENAME`, `REPLACE`, `SKIP`, `ALLOW`), replacing raw string checks.
+- **Custom `ModelResolutionException`**: Replaced generic `abort()` calls with a dedicated exception for clearer debugging when model binding fails.
+
+### Changed
+- **Configurable Namespaces**: The component now resolves models using the `model_namespaces` configuration array instead of hardcoded `App\Models` strings, allowing for better support in modular/domain-driven architectures.
+- **Validation Refactor**: Centralized upload validation into a dedicated `rules()` method, simplifying the `uploadFiles()` logic and improving maintainability.
+
+### Fixed
+- Improved exception handling in test suite to correctly capture and assert custom package exceptions.
+- Resolved potential `MassAssignmentException` issues in tests when instantiating standard User models.
 ## [v0.3.0] — 2025-09-01
 
 ### Added
@@ -107,5 +138,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/codebyray/livewire-media-uploader/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/codebyray/livewire-media-uploader/compare/v0.4.0...HEAD
+[v0.4.0]: https://github.com/codebyray/livewire-media-uploader/releases/tag/v0.4.0
+[v0.3.0]: https://github.com/codebyray/livewire-media-uploader/releases/tag/v0.3.0
+[v0.2.0]: https://github.com/codebyray/livewire-media-uploader/releases/tag/v0.2.0
 [v0.1.0]: https://github.com/codebyray/livewire-media-uploader/releases/tag/v0.1.0

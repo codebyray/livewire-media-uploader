@@ -54,9 +54,9 @@ Livewire Media Uploader is a reusable Livewire v3 component that integrates seam
 ## Requirements
 
 - PHP **8.1+**
-- Laravel **10.x | 11.x | 12.x**
-- Livewire **^3.0**
-- spatie/laravel-medialibrary **^10.12**
+- Laravel **^10.0 | ^11.0 | ^12.0 | ^13.0**
+- Livewire **^3.0 | ^4.0**
+- spatie/laravel-medialibrary **^10.12 | ^11.0**
 - TailwindCSS (optional but recommended for the default view)
 - Alpine.js (used by overlays/progress; see [Overlays & UX Notes](#overlays--ux-notes))
 - CSS depending on theme:

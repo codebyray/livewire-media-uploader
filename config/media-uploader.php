@@ -4,6 +4,26 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Model Namespaces
+    |--------------------------------------------------------------------------
+    | Define the namespaces where your Eloquent models are located.
+    |
+    | When passing a class name (e.g., model="Product") to the Livewire component,
+    | the package will iterate through these namespaces to resolve the
+    | Fully Qualified Class Name (FQCN).
+    |
+    | Useful if your models are organized across different directories,
+    | such as "App\Models" or "App\Domain\Models".
+    |
+    | Example:
+    |   'model_namespaces' => ['App\\Models', 'App\\Domain\\Models'],
+    */
+    'model_namespaces' => [
+        'App\\Models',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Active UI Theme
     |--------------------------------------------------------------------------
     | Controls which Blade view is used to render the uploader UI.
@@ -21,7 +41,7 @@ return [
     |
     | Default: 'tailwind'
     */
-    'theme'  => env('MEDIA_UPLOADER_THEME', 'tailwind'),
+    'theme' => env('MEDIA_UPLOADER_THEME', 'tailwind'),
 
     /*
     |--------------------------------------------------------------------------
@@ -50,7 +70,7 @@ return [
     |   />
     */
     'themes' => [
-        'tailwind'  => 'media-uploader::themes.tailwind.media-uploader',
+        'tailwind' => 'media-uploader::themes.tailwind.media-uploader',
         'bootstrap' => 'media-uploader::themes.bootstrap.media-uploader',
         // 'custom' => 'media-uploader::themes.custom.media-uploader',
     ],
@@ -75,8 +95,8 @@ return [
     | preset's validation constraints.
     */
     'collections' => [
-        'avatars'     => 'images',
-        'images'      => 'images',
+        'avatars' => 'images',
+        'images' => 'images',
         'attachments' => 'docs',
     ],
 
@@ -103,9 +123,9 @@ return [
         |  - MEDIA_MAXKB_IMAGES   (integer KB, e.g. 10240 for 10 MB)
         */
         'images' => [
-            'types'   => env('MEDIA_TYPES_IMAGES',  'jpg,jpeg,png,webp,avif,gif'),
-            'mimes'   => env('MEDIA_MIMES_IMAGES',  'image/jpeg,image/png,image/webp,image/avif,image/gif'),
-            'max_kb'  => (int) env('MEDIA_MAXKB_IMAGES', 10240),
+            'types' => env('MEDIA_TYPES_IMAGES', 'jpg,jpeg,png,webp,avif,gif'),
+            'mimes' => env('MEDIA_MIMES_IMAGES', 'image/jpeg,image/png,image/webp,image/avif,image/gif'),
+            'max_kb' => (int) env('MEDIA_MAXKB_IMAGES', 10240),
         ],
 
         // ... existing code ...
@@ -119,9 +139,9 @@ return [
         |  - MEDIA_MAXKB_DOCS     (integer KB, e.g. 20480 for 20 MB)
         */
         'docs' => [
-            'types'   => env('MEDIA_TYPES_DOCS',    'pdf,doc,docx,xls,xlsx,ppt,pptx,txt'),
-            'mimes'   => env('MEDIA_MIMES_DOCS',    'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain'),
-            'max_kb'  => (int) env('MEDIA_MAXKB_DOCS', 20480),
+            'types' => env('MEDIA_TYPES_DOCS', 'pdf,doc,docx,xls,xlsx,ppt,pptx,txt'),
+            'mimes' => env('MEDIA_MIMES_DOCS', 'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain'),
+            'max_kb' => (int) env('MEDIA_MAXKB_DOCS', 20480),
         ],
 
         /*
@@ -134,9 +154,9 @@ return [
         |  - MEDIA_MAXKB_VIDEOS   (integer KB, e.g. 102400 for 100 MB)
         */
         'videos' => [
-            'types'   => env('MEDIA_TYPES_VIDEOS',  'mp4,mov,webm'),
-            'mimes'   => env('MEDIA_MIMES_VIDEOS',  'video/mp4,video/quicktime,video/webm'),
-            'max_kb'  => (int) env('MEDIA_MAXKB_VIDEOS', 102400),
+            'types' => env('MEDIA_TYPES_VIDEOS', 'mp4,mov,webm'),
+            'mimes' => env('MEDIA_MIMES_VIDEOS', 'video/mp4,video/quicktime,video/webm'),
+            'max_kb' => (int) env('MEDIA_MAXKB_VIDEOS', 102400),
         ],
 
         /*
@@ -150,9 +170,9 @@ return [
         |  - MEDIA_MAXKB_DEFAULT
         */
         'default' => [
-            'types'   => env('MEDIA_TYPES_DEFAULT', 'jpg,jpeg,png,webp,avif,gif,pdf,doc,docx,xls,xlsx,ppt,pptx,txt'),
-            'mimes'   => env('MEDIA_MIMES_DEFAULT', 'image/jpeg,image/png,image/webp,image/avif,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain'),
-            'max_kb'  => (int) env('MEDIA_MAXKB_DEFAULT', 10240),
+            'types' => env('MEDIA_TYPES_DEFAULT', 'jpg,jpeg,png,webp,avif,gif,pdf,doc,docx,xls,xlsx,ppt,pptx,txt'),
+            'mimes' => env('MEDIA_MIMES_DEFAULT', 'image/jpeg,image/png,image/webp,image/avif,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain'),
+            'max_kb' => (int) env('MEDIA_MAXKB_DEFAULT', 10240),
         ],
     ],
 ];
