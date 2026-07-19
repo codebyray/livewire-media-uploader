@@ -2,7 +2,7 @@
 
 # Livewire Media Uploader
 
-Livewire Media Uploader is a reusable Livewire v3 component that integrates seamlessly with Spatie Laravel Media Library. It ships a clean Tailwind Blade view by default (fully publishable), Bootstrap theme as an option, Alpine overlays for previews/confirmations, drag-and-drop uploads, per-file metadata (caption/description/order), configurable presets, name-conflict strategies, and optional SHA-256 duplicate detection. Drop it in, point it at a model, and you’re shipping in minutes.
+Livewire Media Uploader is a reusable Livewire v3/v4 component that integrates seamlessly with Spatie Laravel Media Library. It ships a clean Tailwind Blade view by default (fully publishable), Bootstrap theme as an option, Alpine overlays for previews/confirmations, drag-and-drop uploads, per-file metadata (caption/description/order), configurable presets, name-conflict strategies, and optional SHA-256 duplicate detection. Drop it in, point it at a model, and you’re shipping in minutes.
 
 ---
 
@@ -21,6 +21,7 @@ Livewire Media Uploader is a reusable Livewire v3 component that integrates seam
 - [Configuration](#configuration)
 - [Props](#props)
 - [Events](#events)
+- [Authorization](#authorization)
 - [Model Setup (Spatie Media Library)](#model-setup-spatie-media-library)
 - [Overlays & UX Notes](#overlays--ux-notes)
 - [Troubleshooting](#troubleshooting)
@@ -31,7 +32,7 @@ Livewire Media Uploader is a reusable Livewire v3 component that integrates seam
 
 ## Features
 
-- ✅ Livewire v3 component with themeable Blade UI
+- ✅ Livewire v3/v4 component with themeable Blade UI
   - Tailwind (default)
   - Bootstrap (optional)
   - Fully publishable and overridable
@@ -43,6 +44,7 @@ Livewire Media Uploader is a reusable Livewire v3 component that integrates seam
 - ✅ Optional **exact duplicate** detection via SHA-256
 - ✅ Collection → preset mapping (auto `accept` attribute)
 - ✅ Image preview **overlay** + delete confirmation **modal**
+- ✅ Optional **authorization hook** (`authorizeAbility`) — delegates to your app's own Gate/Policy, no auth package required
 - ✅ Works with:
     - Saved model instance (`:for="$model"`)
     - String model + id (`model="user" :id="1"`)
@@ -440,6 +442,7 @@ The component decides the active preset in this order:
 | `aliases` | `array` | `[]` | Local alias map, e.g. `['profile' => \App\Models\User::class]`. |
 | `attachedFilesTitle` | `string` | `"Current gallery"` | Heading text in the list card. |
 | `listAll` | `bool` | `false` | When `true`, the attached media list shows **all collections**, grouped by collection name (still editable). |
+| `authorizeAbility` | `?string` | `null` | Gate/Policy ability checked against the target model before upload/delete/edit/attach. See [Authorization](#authorization). |
 
 ---
 
@@ -463,6 +466,30 @@ Example:
   <livewire:media-uploader :for="$user" collection="images" preset="images" />
 </div>
 ```
+
+---
+
+## Authorization
+
+**By default, the component does not perform any authorization.** It verifies that a given `Media` record belongs to the resolved target model before allowing edits/deletes, but it does **not** check whether the *current user* is allowed to modify that model. It's your app's responsibility to ensure the component only renders where the user already has access (route middleware, a policy check before rendering the page, etc.).
+
+If you'd like the component to enforce this itself, set `authorizeAbility` to a Gate/Policy ability name. It's checked against the resolved target model before every mutating action (`uploadFiles`, `remove`, `saveEdit`, and the `media:attach` event handler), using Laravel's own `Gate::authorize()` — no extra package required, and it plays nicely with anything already wired up (Policies, Gate closures, Spatie Permissions via a Gate, etc.).
+
+```html
+<livewire:media-uploader
+    :for="$post"
+    collection="images"
+    preset="images"
+    authorizeAbility="update"
+/>
+```
+
+With the example above, before any upload/delete/edit/attach action runs, the component calls the equivalent of `Gate::authorize('update', $post)`. If your `PostPolicy::update()` returns `false`, the action aborts with a `403` instead of proceeding.
+
+**Notes:**
+- One ability is checked for all mutating actions. If you need `delete` and `update` to map to different Policy methods, don't set `authorizeAbility` — instead wrap the component's Blade usage behind your own check, or open an issue/PR describing the use case.
+- The `channel` prop used with the `media:attach` event is a namespacing convenience for routing the event to the right component instance — it is **not** an authorization boundary. Use `authorizeAbility` (or your own upstream checks) if untrusted input could influence which `model`/`id` gets dispatched to `media:attach`.
+- Leaving `authorizeAbility` unset preserves the exact behavior of versions prior to `0.5.0` — this is a fully backward-compatible, opt-in addition.
 
 ---
 

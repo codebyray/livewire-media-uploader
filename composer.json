@@ -1,6 +1,6 @@
 {
     "name": "codebyray/livewire-media-uploader",
-    "description": "Reusable Livewire v3 media uploader that integrates with Spatie Media Library and ships a publishable view.",
+    "description": "Reusable Livewire v3/v4 media uploader that integrates with Spatie Media Library and ships a publishable view.",
     "keywords": [
         "laravel",
         "livewire",

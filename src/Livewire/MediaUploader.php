@@ -7,6 +7,7 @@ use Codebyray\LivewireMediaUploader\Exceptions\ModelResolutionException;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\File as FileRule;
 use Livewire\Attributes\Locked;
@@ -46,6 +47,16 @@ class MediaUploader extends Component
     public ?string $pendingModelClass   = null;
     public ?string $channel             = null;
     public bool    $listAll             = false;
+
+    /**
+     * Optional Gate/Policy ability name checked against the resolved target
+     * model before any mutating action (upload, delete, edit meta, attach).
+     * Left null by default so existing consumers see no behavior change —
+     * the app is responsible for its own authorization unless this is set.
+     *
+     * Example: :authorizeAbility="'update'"  (checks $post->can('update'))
+     */
+    public ?string $authorizeAbility    = null;
     public array   $groups              = [];
 
     #[Locked]
@@ -69,12 +80,14 @@ class MediaUploader extends Component
         string $attachedFilesTitle = 'Attached media',
         ?string $channel = null,
         bool $listAll = false,
+        ?string $authorizeAbility = null,
     ): void {
         // Load namespaces from config
         $this->namespaces = $namespaces ?? config('media-uploader.model_namespaces', ['App\\Models']);
         $this->aliases = $aliases ?? [];
 
         $this->channel = $channel;
+        $this->authorizeAbility = $authorizeAbility;
         $this->collection = $collection ?: 'images';
         $this->disk = $disk;
         $this->multiple = $multiple;
@@ -138,9 +151,9 @@ class MediaUploader extends Component
         }
 
         return [
-            'uploads' => ['required', 'array'],
-            'uploads.*' => $perFileRules,
-        ] + $this->queueMetaRules();
+                'uploads' => ['required', 'array'],
+                'uploads.*' => $perFileRules,
+            ] + $this->queueMetaRules();
     }
 
     protected function queueMetaRules(): array
@@ -267,6 +280,25 @@ class MediaUploader extends Component
         return $cls::findOrFail($this->resolvedModelId);
     }
 
+    /**
+     * No-op unless the consuming app opted in via the authorizeAbility prop.
+     * Delegates to Laravel's own Gate/Policy system, so the package never
+     * has to know or care how the app defines "can this user do this."
+     * Aborts with 403 if the ability check fails.
+     */
+    protected function authorizeAction(?Model $target = null): void
+    {
+        if ($this->authorizeAbility === null) {
+            return;
+        }
+
+        $target ??= $this->target();
+
+        if ($target !== null) {
+            Gate::authorize($this->authorizeAbility, $target);
+        }
+    }
+
     public function updatedUploads(): void
     {
         $list = is_array($this->uploads) ? $this->uploads : [];
@@ -306,6 +338,7 @@ class MediaUploader extends Component
         }
 
         $model = $this->target();
+        $this->authorizeAction($model);
         $collection = $this->collection ?? 'default';
         $added = $replaced = $skipped = $renamed = 0;
 
@@ -398,7 +431,8 @@ class MediaUploader extends Component
         if (! in_array(HasMedia::class, class_implements($fqcn), true)) {
             throw new ModelResolutionException(class_basename($fqcn).' must implement Spatie\\MediaLibrary\\HasMedia.');
         }
-        $fqcn::findOrFail($id);
+        $attachTarget = $fqcn::findOrFail($id);
+        $this->authorizeAction($attachTarget);
 
         $this->resolvedModelClass = $fqcn;
         $this->resolvedModelId = (string) $id;
@@ -426,6 +460,7 @@ class MediaUploader extends Component
         $media = Media::findOrFail($mediaId);
         $belongs = $media->model_type === $this->resolvedModelClass && (string) $media->model_id === (string) $this->resolvedModelId;
         abort_unless($belongs, 403, 'This media does not belong to the specified model.');
+        $this->authorizeAction();
         $media->delete();
         if ($this->showList) {
             $this->loadItems();
@@ -511,6 +546,7 @@ class MediaUploader extends Component
         $media = Media::findOrFail($mediaId);
         $belongs = $media->model_type === $this->resolvedModelClass && (string) $media->model_id === (string) $this->resolvedModelId;
         abort_unless($belongs, 403, 'This media does not belong to the specified model.');
+        $this->authorizeAction();
 
         $meta = $this->editing[$mediaId] ?? ['caption' => null, 'description' => null, 'order' => null];
         $media->setCustomProperty('caption', $meta['caption'] ?: null);
