@@ -250,3 +250,22 @@ it('throws ModelResolutionException if model does not implement HasMedia', funct
         expect($actual)->toBeInstanceOf(ModelResolutionException::class);
     }
 });
+
+it('blocks mutating actions when authorizeAbility fails', function () {
+    $post = TestPost::create(['title' => 'Hello']);
+    $file = TemporaryUploadedFile::fake()->image('blocked.jpg', 40, 40);
+
+    Gate::define('update', fn ($user, $post) => false);
+
+    Livewire::test(MediaUploader::class, [
+        'for' => $post,
+        'collection' => 'images',
+        'preset' => 'images',
+        'authorizeAbility' => 'update',
+    ])
+        ->set('uploads', [$file])
+        ->call('uploadFiles')
+        ->assertForbidden();
+
+    expect($post->getMedia('images'))->toHaveCount(0);
+});

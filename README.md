@@ -2,7 +2,9 @@
 
 # Livewire Media Uploader
 
-Livewire Media Uploader is a reusable Livewire v3 component that integrates seamlessly with Spatie Laravel Media Library. It ships a clean Tailwind Blade view by default (fully publishable), Bootstrap theme as an option, Alpine overlays for previews/confirmations, drag-and-drop uploads, per-file metadata (caption/description/order), configurable presets, name-conflict strategies, and optional SHA-256 duplicate detection. Drop it in, point it at a model, and you’re shipping in minutes.
+[![tests](https://github.com/codebyray/livewire-media-uploader/actions/workflows/tests.yml/badge.svg)](https://github.com/codebyray/livewire-media-uploader/actions/workflows/tests.yml)
+
+Livewire Media Uploader is a reusable Livewire v3/v4 component that integrates seamlessly with Spatie Laravel Media Library. It ships a clean Tailwind Blade view by default (fully publishable), Bootstrap theme as an option, Alpine overlays for previews/confirmations, drag-and-drop uploads, per-file metadata (caption/description/order), configurable presets, name-conflict strategies, and optional SHA-256 duplicate detection. Drop it in, point it at a model, and you’re shipping in minutes.
 
 ---
 
@@ -13,14 +15,15 @@ Livewire Media Uploader is a reusable Livewire v3 component that integrates seam
 - [Installation](#installation)
 - [Publishing Assets](#publishing-assets)
 - [Theme System](#theme-system-tailwind--bootstrap--custom)
-  - [Dark Mode - Tailwind](#dark-mode-tailwind-theme)
-  - [Custom Theme](#custom-themes)
+    - [Dark Mode - Tailwind](#dark-mode-tailwind-theme)
+    - [Custom Theme](#custom-themes)
 - [Quick Start](#quick-start)
 - [Usage Examples](#usage-examples)
-  - [Create flow (deferred uploads)](#create-flow-deferred-uploads)
+    - [Create flow (deferred uploads)](#create-flow-deferred-uploads)
 - [Configuration](#configuration)
 - [Props](#props)
 - [Events](#events)
+- [Authorization](#authorization)
 - [Model Setup (Spatie Media Library)](#model-setup-spatie-media-library)
 - [Overlays & UX Notes](#overlays--ux-notes)
 - [Troubleshooting](#troubleshooting)
@@ -31,10 +34,10 @@ Livewire Media Uploader is a reusable Livewire v3 component that integrates seam
 
 ## Features
 
-- ✅ Livewire v3 component with themeable Blade UI
-  - Tailwind (default)
-  - Bootstrap (optional)
-  - Fully publishable and overridable
+- ✅ Livewire v3/v4 component with themeable Blade UI
+    - Tailwind (default)
+    - Bootstrap (optional)
+    - Fully publishable and overridable
 - ✅ Spatie Media Library integration (attach, list, edit meta, delete)
 - ✅ **Publishable view** for per-project customization
 - ✅ Drag & drop uploads + progress bar
@@ -43,6 +46,7 @@ Livewire Media Uploader is a reusable Livewire v3 component that integrates seam
 - ✅ Optional **exact duplicate** detection via SHA-256
 - ✅ Collection → preset mapping (auto `accept` attribute)
 - ✅ Image preview **overlay** + delete confirmation **modal**
+- ✅ Optional **authorization hook** (`authorizeAbility`) — delegates to your app's own Gate/Policy, no auth package required
 - ✅ Works with:
     - Saved model instance (`:for="$model"`)
     - String model + id (`model="user" :id="1"`)
@@ -53,15 +57,19 @@ Livewire Media Uploader is a reusable Livewire v3 component that integrates seam
 
 ## Requirements
 
-- PHP **8.1+**
-- Laravel **^10.0 | ^11.0 | ^12.0 | ^13.0**
+- PHP **8.2+**
+- Laravel **^12.0 | ^13.0**
 - Livewire **^3.0 | ^4.0**
 - spatie/laravel-medialibrary **^10.12 | ^11.0**
 - TailwindCSS (optional but recommended for the default view)
 - Alpine.js (used by overlays/progress; see [Overlays & UX Notes](#overlays--ux-notes))
 - CSS depending on theme:
-  - Tailwind theme → TailwindCSS (recommended)
-  - Bootstrap theme → Bootstrap CSS (no Bootstrap JS required; Alpine drives modals)
+    - Tailwind theme → TailwindCSS (recommended)
+    - Bootstrap theme → Bootstrap CSS (no Bootstrap JS required; Alpine drives modals)
+
+> **Note on Laravel 10/11:** Earlier releases of this package listed Laravel 10 and 11 as supported. Both are now past their security-support window (Laravel 10 is EOL; Laravel 11 security support ended March 2026), and current releases of `laravel/framework` in those lines carry known, unpatched advisories — meaning a fresh `composer install` targeting either will be blocked by Composer's own audit for most consumers. Support for both has been dropped as of `v0.5.0`. If you're still running Laravel 10/11, pin this package to `v0.4.x`, but prioritize upgrading Laravel first — that's the more urgent fix.
+>
+> Every PHP/Laravel/Livewire combination listed above is verified on every push via [GitHub Actions](https://github.com/codebyray/livewire-media-uploader/actions/workflows/tests.yml).
 
 ---
 
@@ -186,10 +194,10 @@ MEDIA_MAXKB_DEFAULT=10240
 
 1) Ensure your target Eloquent model implements `Spatie\MediaLibrary\HasMedia` and is **saved**.
 
-    #### Model Setup (Spatie Media Library)
-    
-    Your model must implement `HasMedia` and be **saved** before attaching media.
-    
+   #### Model Setup (Spatie Media Library)
+
+   Your model must implement `HasMedia` and be **saved** before attaching media.
+
     ```php
     use Spatie\MediaLibrary\HasMedia;
     use Spatie\MediaLibrary\InteractsWithMedia;
@@ -440,6 +448,7 @@ The component decides the active preset in this order:
 | `aliases` | `array` | `[]` | Local alias map, e.g. `['profile' => \App\Models\User::class]`. |
 | `attachedFilesTitle` | `string` | `"Current gallery"` | Heading text in the list card. |
 | `listAll` | `bool` | `false` | When `true`, the attached media list shows **all collections**, grouped by collection name (still editable). |
+| `authorizeAbility` | `?string` | `null` | Gate/Policy ability checked against the target model before upload/delete/edit/attach. See [Authorization](#authorization). |
 
 ---
 
@@ -463,6 +472,30 @@ Example:
   <livewire:media-uploader :for="$user" collection="images" preset="images" />
 </div>
 ```
+
+---
+
+## Authorization
+
+**By default, the component does not perform any authorization.** It verifies that a given `Media` record belongs to the resolved target model before allowing edits/deletes, but it does **not** check whether the *current user* is allowed to modify that model. It's your app's responsibility to ensure the component only renders where the user already has access (route middleware, a policy check before rendering the page, etc.).
+
+If you'd like the component to enforce this itself, set `authorizeAbility` to a Gate/Policy ability name. It's checked against the resolved target model before every mutating action (`uploadFiles`, `remove`, `saveEdit`, and the `media:attach` event handler), using Laravel's own `Gate::authorize()` — no extra package required, and it plays nicely with anything already wired up (Policies, Gate closures, Spatie Permissions via a Gate, etc.).
+
+```html
+<livewire:media-uploader
+    :for="$post"
+    collection="images"
+    preset="images"
+    authorizeAbility="update"
+/>
+```
+
+With the example above, before any upload/delete/edit/attach action runs, the component calls the equivalent of `Gate::authorize('update', $post)`. If your `PostPolicy::update()` returns `false`, the action aborts with a `403` instead of proceeding.
+
+**Notes:**
+- One ability is checked for all mutating actions. If you need `delete` and `update` to map to different Policy methods, don't set `authorizeAbility` — instead wrap the component's Blade usage behind your own check, or open an issue/PR describing the use case.
+- The `channel` prop used with the `media:attach` event is a namespacing convenience for routing the event to the right component instance — it is **not** an authorization boundary. Use `authorizeAbility` (or your own upstream checks) if untrusted input could influence which `model`/`id` gets dispatched to `media:attach`.
+- Leaving `authorizeAbility` unset preserves the exact behavior of versions prior to `0.5.0` — this is a fully backward-compatible, opt-in addition.
 
 ---
 

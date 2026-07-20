@@ -1,0 +1,62 @@
+name: tests
+
+on:
+  push:
+    branches: [main, maintenance-release]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: PHP ${{ matrix.php }} — Laravel ${{ matrix.laravel }} — Livewire ${{ matrix.livewire }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: [8.2, 8.3, 8.4]
+        laravel: ['12.*', '13.*']
+        livewire: ['^3.0', '^4.0']
+        include:
+          - laravel: '12.*'
+            testbench: '^10.0'
+          - laravel: '13.*'
+            testbench: '^11.0'
+        exclude:
+          # Laravel 13 requires PHP >= 8.3 (and pest-plugin-laravel 4.x,
+          # which is what unlocks Laravel 13 support, requires PHP >= 8.3 too)
+          - laravel: '13.*'
+            php: 8.2
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, dom, fileinfo, gd, pdo_sqlite, sqlite3
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/composer/files
+          key: composer-${{ runner.os }}-php${{ matrix.php }}-laravel${{ matrix.laravel }}-livewire${{ matrix.livewire }}-${{ hashFiles('composer.json') }}
+          restore-keys: |
+            composer-${{ runner.os }}-php${{ matrix.php }}-laravel${{ matrix.laravel }}-
+
+      - name: Set matrix dependency versions
+        run: |
+          composer require "laravel/framework:${{ matrix.laravel }}" \
+                            "orchestra/testbench:${{ matrix.testbench }}" \
+                            "livewire/livewire:${{ matrix.livewire }}" \
+                            --no-interaction --no-update
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction --no-progress
+
+      - name: Run tests
+        run: vendor/bin/pest --colors=always
