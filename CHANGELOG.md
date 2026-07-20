@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- 
+
+### Changed
+- 
+
+### Fixed
+- 
+
+---
+
+## [v0.5.0] — 2026-07-20
+### Added
 - **Optional authorization hook (`authorizeAbility`)**: Pass a Gate/Policy ability name and the component will call `Gate::authorize()` against the resolved target model before `uploadFiles`, `remove`, `saveEdit`, and the `media:attach` handler run. Unset by default — fully backward-compatible, opt-in only. See README [Authorization](README.md#authorization) section.
 - **CI**: GitHub Actions workflow testing the PHP × Laravel × Livewire support matrix on every push/PR.
 
@@ -141,7 +153,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/codebyray/livewire-media-uploader/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/codebyray/livewire-media-uploader/compare/v0.5.0...HEAD
+[v0.5.0]: https://github.com/codebyray/livewire-media-uploader/releases/tag/v0.5.0
 [v0.4.0]: https://github.com/codebyray/livewire-media-uploader/releases/tag/v0.4.0
 [v0.3.0]: https://github.com/codebyray/livewire-media-uploader/releases/tag/v0.3.0
 [v0.2.0]: https://github.com/codebyray/livewire-media-uploader/releases/tag/v0.2.0
