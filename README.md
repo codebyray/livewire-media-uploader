@@ -13,11 +13,11 @@ Livewire Media Uploader is a reusable Livewire v3/v4 component that integrates s
 - [Installation](#installation)
 - [Publishing Assets](#publishing-assets)
 - [Theme System](#theme-system-tailwind--bootstrap--custom)
-  - [Dark Mode - Tailwind](#dark-mode-tailwind-theme)
-  - [Custom Theme](#custom-themes)
+    - [Dark Mode - Tailwind](#dark-mode-tailwind-theme)
+    - [Custom Theme](#custom-themes)
 - [Quick Start](#quick-start)
 - [Usage Examples](#usage-examples)
-  - [Create flow (deferred uploads)](#create-flow-deferred-uploads)
+    - [Create flow (deferred uploads)](#create-flow-deferred-uploads)
 - [Configuration](#configuration)
 - [Props](#props)
 - [Events](#events)
@@ -33,9 +33,9 @@ Livewire Media Uploader is a reusable Livewire v3/v4 component that integrates s
 ## Features
 
 - ✅ Livewire v3/v4 component with themeable Blade UI
-  - Tailwind (default)
-  - Bootstrap (optional)
-  - Fully publishable and overridable
+    - Tailwind (default)
+    - Bootstrap (optional)
+    - Fully publishable and overridable
 - ✅ Spatie Media Library integration (attach, list, edit meta, delete)
 - ✅ **Publishable view** for per-project customization
 - ✅ Drag & drop uploads + progress bar
@@ -55,15 +55,19 @@ Livewire Media Uploader is a reusable Livewire v3/v4 component that integrates s
 
 ## Requirements
 
-- PHP **8.1+**
-- Laravel **^10.0 | ^11.0 | ^12.0 | ^13.0**
+- PHP **8.2+**
+- Laravel **^12.0 | ^13.0**
 - Livewire **^3.0 | ^4.0**
 - spatie/laravel-medialibrary **^10.12 | ^11.0**
 - TailwindCSS (optional but recommended for the default view)
 - Alpine.js (used by overlays/progress; see [Overlays & UX Notes](#overlays--ux-notes))
 - CSS depending on theme:
-  - Tailwind theme → TailwindCSS (recommended)
-  - Bootstrap theme → Bootstrap CSS (no Bootstrap JS required; Alpine drives modals)
+    - Tailwind theme → TailwindCSS (recommended)
+    - Bootstrap theme → Bootstrap CSS (no Bootstrap JS required; Alpine drives modals)
+
+> **Note on Laravel 10/11:** Earlier releases of this package listed Laravel 10 and 11 as supported. Both are now past their security-support window (Laravel 10 is EOL; Laravel 11 security support ended March 2026), and current releases of `laravel/framework` in those lines carry known, unpatched advisories — meaning a fresh `composer install` targeting either will be blocked by Composer's own audit for most consumers. Support for both has been dropped as of `v0.5.0`. If you're still running Laravel 10/11, pin this package to `v0.4.x`, but prioritize upgrading Laravel first — that's the more urgent fix.
+>
+> Every PHP/Laravel/Livewire combination listed above is verified on every push via [GitHub Actions](https://github.com/codebyray/livewire-media-uploader/actions/workflows/tests.yml).
 
 ---
 
@@ -188,10 +192,10 @@ MEDIA_MAXKB_DEFAULT=10240
 
 1) Ensure your target Eloquent model implements `Spatie\MediaLibrary\HasMedia` and is **saved**.
 
-    #### Model Setup (Spatie Media Library)
-    
-    Your model must implement `HasMedia` and be **saved** before attaching media.
-    
+   #### Model Setup (Spatie Media Library)
+
+   Your model must implement `HasMedia` and be **saved** before attaching media.
+
     ```php
     use Spatie\MediaLibrary\HasMedia;
     use Spatie\MediaLibrary\InteractsWithMedia;

@@ -10,13 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
-- 
+- **Optional authorization hook (`authorizeAbility`)**: Pass a Gate/Policy ability name and the component will call `Gate::authorize()` against the resolved target model before `uploadFiles`, `remove`, `saveEdit`, and the `media:attach` handler run. Unset by default — fully backward-compatible, opt-in only. See README [Authorization](README.md#authorization) section.
+- **CI**: GitHub Actions workflow testing the PHP × Laravel × Livewire support matrix on every push/PR.
 
 ### Changed
-- 
+- **Dropped Laravel 10 and 11 support.** Both are past their security-support window (Laravel 10 EOL; Laravel 11 security support ended March 2026) and current releases in both lines carry unpatched advisories that block a fresh `composer install` under Composer's default audit policy — confirmed via CI, not a judgment call. If you're on Laravel 10/11, stay on `v0.4.x` and prioritize a Laravel upgrade.
+- **Raised minimum PHP to 8.2** to match what's actually installable with supported Laravel/Spatie Media Library versions.
+- Widened `pestphp/pest` and `pestphp/pest-plugin-laravel` dev constraints to also allow `^4.0`, which is what unlocks Laravel 13 test coverage (`pest-plugin-laravel` didn't support Laravel 13 until its v4.1.0 release).
 
 ### Fixed
-- 
+- Corrected README/composer.json copy that said "Livewire v3" despite `^3.0 || ^4.0` already being the supported range.
 
 ---
 
