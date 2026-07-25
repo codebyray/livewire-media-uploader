@@ -225,43 +225,78 @@ it('skips on name conflict when configured', function () {
 it('reorders attached media via drag-and-drop', function () {
     $post = TestPost::create(['title' => 'Hello']);
 
-    $a = $post->addMedia(TemporaryUploadedFile::fake()->image('a.jpg', 20, 20)->getRealPath())
-        ->usingFileName('a.jpg')->toMediaCollection('images');
-    $b = $post->addMedia(TemporaryUploadedFile::fake()->image('b.jpg', 20, 20)->getRealPath())
-        ->usingFileName('b.jpg')->toMediaCollection('images');
-    $c = $post->addMedia(TemporaryUploadedFile::fake()->image('c.jpg', 20, 20)->getRealPath())
-        ->usingFileName('c.jpg')->toMediaCollection('images');
+    $aPath = tempnam(sys_get_temp_dir(), 'media-test-');
+    $bPath = tempnam(sys_get_temp_dir(), 'media-test-');
+    $cPath = tempnam(sys_get_temp_dir(), 'media-test-');
 
-    // Starting order is a(1), b(2), c(3). Drag c to sit where a is.
+    file_put_contents($aPath, 'a');
+    file_put_contents($bPath, 'b');
+    file_put_contents($cPath, 'c');
+
+    $a = $post->addMedia($aPath)
+        ->usingFileName('a.jpg')
+        ->toMediaCollection('images');
+
+    $b = $post->addMedia($bPath)
+        ->usingFileName('b.jpg')
+        ->toMediaCollection('images');
+
+    $c = $post->addMedia($cPath)
+        ->usingFileName('c.jpg')
+        ->toMediaCollection('images');
+
+    // Starting order is a(1), b(2), c(3). Drag c before a.
     Livewire::test(MediaUploader::class, [
         'for' => $post,
         'collection' => 'images',
         'showList' => true,
     ])
-        ->call('reorderItems', $c->id, $a->id)
+        ->call('reorderItems', $c->id, $a->id, 'images', 'before')
         ->assertDispatched('media-reordered');
 
-    $order = $post->fresh()->media()->where('collection_name', 'images')
-        ->orderBy('order_column')->pluck('file_name')->all();
+    $order = $post->fresh()
+        ->media()
+        ->where('collection_name', 'images')
+        ->orderBy('order_column')
+        ->pluck('file_name')
+        ->all();
 
-    expect($order)->toBe(['c.jpg', 'a.jpg', 'b.jpg']);
+    expect($order)->toBe([
+                             'c.jpg',
+                             'a.jpg',
+                             'b.jpg',
+                         ]);
 });
 
 it('ignores reorderItems for media outside the resolved collection', function () {
     $post = TestPost::create(['title' => 'Hello']);
 
-    $a = $post->addMedia(TemporaryUploadedFile::fake()->image('a.jpg', 20, 20)->getRealPath())
-        ->usingFileName('a.jpg')->toMediaCollection('images');
-    $doc = $post->addMedia(TemporaryUploadedFile::fake()->create('doc.pdf', 10)->getRealPath())
-        ->usingFileName('doc.pdf')->toMediaCollection('documents');
+    $imagePath = tempnam(sys_get_temp_dir(), 'media-test-');
+    $documentPath = tempnam(sys_get_temp_dir(), 'media-test-');
+
+    file_put_contents($imagePath, 'image');
+    file_put_contents($documentPath, 'document');
+
+    $a = $post->addMedia($imagePath)
+        ->usingFileName('a.jpg')
+        ->toMediaCollection('images');
+
+    $doc = $post->addMedia($documentPath)
+        ->usingFileName('doc.pdf')
+        ->toMediaCollection('documents');
 
     Livewire::test(MediaUploader::class, [
         'for' => $post,
         'collection' => 'images',
         'showList' => true,
-    ])->call('reorderItems', $doc->id, $a->id);
+    ])->call(
+        'reorderItems',
+        $doc->id,
+        $a->id,
+        'images',
+        'before'
+    );
 
-    // Nothing changed: the foreign-collection id was rejected.
     expect($a->fresh()->order_column)->toBe(1)
         ->and($doc->fresh()->collection_name)->toBe('documents');
 });
@@ -334,4 +369,49 @@ it('blocks mutating actions when authorizeAbility fails', function () {
         ->assertForbidden();
 
     expect($post->getMedia('images'))->toHaveCount(0);
+});
+
+it('can move attached media to the end of the collection', function () {
+    $post = TestPost::create(['title' => 'Hello']);
+
+    $aPath = tempnam(sys_get_temp_dir(), 'media-test-');
+    $bPath = tempnam(sys_get_temp_dir(), 'media-test-');
+    $cPath = tempnam(sys_get_temp_dir(), 'media-test-');
+
+    file_put_contents($aPath, 'a');
+    file_put_contents($bPath, 'b');
+    file_put_contents($cPath, 'c');
+
+    $a = $post->addMedia($aPath)
+        ->usingFileName('a.jpg')
+        ->toMediaCollection('images');
+
+    $b = $post->addMedia($bPath)
+        ->usingFileName('b.jpg')
+        ->toMediaCollection('images');
+
+    $c = $post->addMedia($cPath)
+        ->usingFileName('c.jpg')
+        ->toMediaCollection('images');
+
+    Livewire::test(MediaUploader::class, [
+        'for' => $post,
+        'collection' => 'images',
+        'showList' => true,
+    ])
+        ->call('reorderItems', $a->id, $c->id, 'images', 'after')
+        ->assertDispatched('media-reordered');
+
+    $order = $post->fresh()
+        ->media()
+        ->where('collection_name', 'images')
+        ->orderBy('order_column')
+        ->pluck('file_name')
+        ->all();
+
+    expect($order)->toBe([
+                             'b.jpg',
+                             'c.jpg',
+                             'a.jpg',
+                         ]);
 });
