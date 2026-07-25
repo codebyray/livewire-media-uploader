@@ -42,6 +42,7 @@ Livewire Media Uploader is a reusable Livewire v3/v4 component that integrates s
 - ✅ **Publishable view** for per-project customization
 - ✅ Drag & drop uploads + progress bar
 - ✅ Inline edit of **caption / description / order**
+- ✅ Drag-to-reorder attached media (`order_column`)
 - ✅ Name-conflict strategies: **rename | replace | skip | allow**
 - ✅ Optional **exact duplicate** detection via SHA-256
 - ✅ Collection → preset mapping (auto `accept` attribute)
@@ -181,10 +182,9 @@ MEDIA_MAXKB_DEFAULT=10240
 ### Notes
 - Values are comma-separated; spaces are OK (the package trims them).
 - After changing .env, run:
-```bash
-- php artisan config:clear
-# (or) php artisan config:cache
-```
+    ```bash
+    php artisan config:clear
+    ```
 - The `````<input accept="…">````` attribute is auto-filled from the active preset when accept_from_config is true (default). You can still override it per-component with the accept prop.
 - If uploads fail due to size, make sure your PHP/Server limits also allow it (e.g. upload_max_filesize, post_max_size).
 
@@ -199,6 +199,7 @@ MEDIA_MAXKB_DEFAULT=10240
    Your model must implement `HasMedia` and be **saved** before attaching media.
 
     ```php
+    use Spatie\Image\Enums\Fit;
     use Spatie\MediaLibrary\HasMedia;
     use Spatie\MediaLibrary\InteractsWithMedia;
     use Spatie\MediaLibrary\MediaCollections\Models\Media;
@@ -209,23 +210,43 @@ MEDIA_MAXKB_DEFAULT=10240
     
         public function registerMediaCollections(): void
         {
-            $this->addMediaCollection('photos')        // matches collection="photos"
-                ->useDisk('public')                    // or 's3'
-                ->withResponsiveImages();             // optional
+            // Multi-file collection.
+            $this->addMediaCollection('photos')
+                ->useDisk('public')
+                ->withResponsiveImages();
     
-            // If you also have avatars somewhere:
-            $this->addMediaCollection('avatars')->singleFile();
+            // Single-file collection. Each new upload replaces the existing file.
+            $this->addMediaCollection('avatars')
+                ->singleFile();
         }
     
-        public function registerMediaConversions(Media $media = null): void
+        public function registerMediaConversions(?Media $media = null): void
         {
             $this->addMediaConversion('thumb')
-                ->fit('contain', 256, 256)
-                ->performOnCollections('photos', 'avatars') // scope to specific collections
+                ->fit(Fit::Contain, 256, 256)
+                ->performOnCollections('photos', 'avatars')
                 ->nonQueued();
         }
     }
     ```
+   > **Multiple uploads and `singleFile()`**
+    >
+    > The uploader's `multiple` prop controls whether the file input allows selecting multiple files. It does **not** override Spatie Media Library's collection configuration.
+    >
+    > If a collection is configured with `->singleFile()`, Spatie will remove the existing media item each time another file is added. Selecting multiple files can therefore process every selected file while leaving only the last file in the collection.
+    >
+    > For galleries and other multi-file collections, do not use `->singleFile()`:
+    >
+    > ```php
+    > $this->addMediaCollection('photos');
+    > ```
+    >
+    > Use `->singleFile()` only when the collection should contain one item, such as an avatar or logo:
+    >
+    > ```php
+    > $this->addMediaCollection('avatar')
+    >     ->singleFile();
+    > ```
 2) Include Livewire & Alpine (usually in your app layout):
 
     ```html
@@ -435,7 +456,7 @@ The component decides the active preset in this order:
 | `id` | `int|string` | — | Target model id (used with `model`). |
 | `collection` | `string` | `images` | Media collection name. |
 | `disk` | `?string` | `null` | Storage disk (e.g. `s3`). |
-| `multiple` | `bool` | `true` | Toggle multi-file input. |
+| `multiple` | `bool` | `true` | Allow selecting multiple files. The target Spatie collection must not use `singleFile()` if multiple files should be retained. |
 | `accept` | `?string` | `null` | `<input accept>` override (otherwise may be auto from config). |
 | `showList` | `bool` | `true` | Show the attached media list. |
 | `maxSizeKb` | `int` | `500` (overridden to preset’s `max_kb` if empty) | Max file size (KB). |
@@ -528,6 +549,21 @@ With the example above, before any upload/delete/edit/attach action runs, the co
     - It’s a valid FQCN, morph alias, or maps via dotted path within `namespaces`, or
     - You passed a local alias via `:aliases="['something' => \App\Models\YourModel::class]`.
 
+- **Multiple files selected, but only one remains after upload**  
+  Check the target model's `registerMediaCollections()` method. If the collection uses Spatie Media Library's `->singleFile()`, each new upload replaces the previous media item.
+
+    For multiple files:
+    
+    ```php
+    $this->addMediaCollection('photos');
+    ```
+    For a collection that should contain only one file:
+    ```php
+    $this->addMediaCollection('avatar')
+      ->singleFile();
+    ```
+
+  
 - **`accept` not applied**  
   Set `accept_from_config=true` and ensure your preset has `types`/`mimes`. Or override via `accept` prop.
 
@@ -538,7 +574,6 @@ With the example above, before any upload/delete/edit/attach action runs, the co
 
 ## Roadmap
 
-- Drag-to-reorder (update `order_column`).
 - Show document icon instead of thumbnail in Attached media list if the file is not an image.
 
 PRs welcome!

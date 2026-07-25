@@ -126,8 +126,15 @@
 
         <!-- Selected queue -->
         @if(!empty($selected) && count($selected) > 0)
-            <div class="px-3 pb-3">
-                <div class="small fw-semibold text-body">Ready to upload:</div>
+            <div
+                class="px-3 pb-3"
+                x-data="{
+                    dragQueueKey: null,
+                    dropQueueKey: null,
+                    dropQueuePlacement: null
+                }"
+            >
+                <div class="small fw-semibold text-body">Ready to upload: <span class="fw-normal text-muted">(drag to reorder)</span></div>
                 <div class="mt-2 d-flex flex-column gap-2">
                     @foreach ($selected as $sel)
                         @php
@@ -135,11 +142,77 @@
                             $canPreview = ($sel['is_image'] ?? false) && $temp && method_exists($temp, 'temporaryUrl');
                         @endphp
 
-                        <div class="rounded-3 border p-3 bg-light">
-                            <!-- top row: name + size -->
+                        <div
+                            wire:key="queue-{{ $sel['queue_key'] }}"
+                            draggable="true"
+                            x-on:dragstart="
+                                dragQueueKey = {{ $sel['queue_key'] }};
+                                $event.dataTransfer.effectAllowed = 'move';
+                            "
+                            x-on:dragover.prevent="
+                                if (dragQueueKey === null || dragQueueKey === {{ $sel['queue_key'] }}) {
+                                    return;
+                                }
+
+                                const rect = $el.getBoundingClientRect();
+
+                                dropQueueKey = {{ $sel['queue_key'] }};
+                                dropQueuePlacement =
+                                    $event.clientY < rect.top + (rect.height / 2)
+                                        ? 'before'
+                                        : 'after';
+                            "
+                            x-on:dragleave="
+                                if (!$el.contains($event.relatedTarget)) {
+                                    dropQueueKey = null;
+                                    dropQueuePlacement = null;
+                                }
+                            "
+                            x-on:drop.prevent="
+                                if (dragQueueKey !== null && dragQueueKey !== {{ $sel['queue_key'] }}) {
+                                    $wire.reorderQueue(
+                                        dragQueueKey,
+                                        {{ $sel['queue_key'] }},
+                                        dropQueuePlacement ?? 'before'
+                                    );
+                                }
+
+                                dragQueueKey = null;
+                                dropQueueKey = null;
+                                dropQueuePlacement = null;
+                            "
+                            x-on:dragend="
+                                dragQueueKey = null;
+                                dropQueueKey = null;
+                                dropQueuePlacement = null;
+                            "
+                            x-bind:style="
+                                dropQueueKey === {{ $sel['queue_key'] }}
+                                    ? (
+                                        dropQueuePlacement === 'before'
+                                            ? 'cursor:grab; box-shadow: inset 0 3px 0 var(--bs-primary)'
+                                            : 'cursor:grab; box-shadow: inset 0 -3px 0 var(--bs-primary)'
+                                    )
+                                    : 'cursor:grab;'
+                            "
+                            x-bind:class="
+                                dropQueueKey === {{ $sel['queue_key'] }}
+                                    ? 'bg-primary-subtle'
+                                    : 'bg-light'
+                            "
+                            class="rounded-3 border p-3"
+                        >
+                            <!-- top row: drag handle + name + size -->
                             <div class="d-flex align-items-center justify-content-between gap-3">
-                                <span class="text-truncate small text-body">{{ $sel['name'] }}</span>
-                                <span class="small text-muted">{{ number_format(($sel['size'] ?? 0)/1024, 1) }} KB</span>
+                                <div class="d-flex align-items-center gap-2 text-truncate">
+                                    <svg class="text-muted flex-shrink-0" style="width:16px;height:16px" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                        <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+                                        <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+                                        <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+                                    </svg>
+                                    <span class="text-truncate small text-body">{{ $sel['name'] }}</span>
+                                </div>
+                                <span class="small text-muted flex-shrink-0">{{ number_format(($sel['size'] ?? 0)/1024, 1) }} KB</span>
                             </div>
 
                             <!-- form row -->
@@ -148,7 +221,19 @@
                                     <!-- thumb -->
                                     <div class="col-md-2">
                                         @if($canPreview)
-                                            <img src="{{ $temp->temporaryUrl() }}" alt="" class="img-thumbnail" style="width:80px;height:80px;object-fit:cover;">
+                                            <button
+                                                type="button"
+                                                @click.stop="openPreview(@js($temp->temporaryUrl()), @js($sel['name']))"
+                                                class="btn p-0 border-0"
+                                                title="Preview {{ $sel['name'] }}"
+                                            >
+                                                <img
+                                                    src="{{ $temp->temporaryUrl() }}"
+                                                    alt="{{ $sel['name'] }}"
+                                                    class="img-thumbnail"
+                                                    style="width:80px;height:80px;object-fit:cover;"
+                                                >
+                                            </button>
                                         @else
                                             <div class="d-grid border rounded text-muted align-items-center justify-content-center" style="width:80px;height:80px;place-items:center;">
                                                 <svg viewBox="0 0 24 24" style="width:28px;height:28px" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -256,115 +341,312 @@
                     <p class="small text-muted mb-0">No gallery images yet.</p>
                 </div>
             @else
-                @if (count($items) === 0)
-                    <div class="p-3">
-                        <p class="small text-muted mb-0">No gallery images yet.</p>
-                    </div>
-                @else
-                    @if ($listAll)
-                        {{-- Grouped by collection --}}
-                        @foreach ($groups as $collectionName => $collectionItems)
-                            <div class="px-3 py-2 bg-light border-bottom">
-                                <div class="small fw-semibold text-body text-uppercase">{{ $collectionName }}</div>
-                            </div>
+                @if ($listAll)
+                    {{-- Grouped by collection --}}
+                    @foreach ($groups as $collectionName => $collectionItems)
+                        <div class="px-3 py-2 bg-light border-bottom">
+                            <div class="small fw-semibold text-body text-uppercase">{{ $collectionName }}</div>
+                        </div>
 
-                            <ul class="list-group list-group-flush">
-                                @foreach ($collectionItems as $m)
-                                    @php
-                                        $id = (int) $m['id'];
-                                        $isEditing = isset($editing[$id]);
-                                        $linkText = $m['caption'] ?: ($m['name'] ?: ($m['original_name'] ?? $m['file_name']));
-                                    @endphp
+                        <ul class="list-group list-group-flush"
+                            x-data="{
+                                    dragId: null,
+                                    dropId: null,
+                                    dropPlacement: null
+                                }"
+                        >
+                            @foreach ($collectionItems as $m)
+                                @php
+                                    $id = (int) $m['id'];
+                                    $isEditing = isset($editing[$id]);
+                                    $linkText = $m['caption'] ?: ($m['name'] ?: ($m['original_name'] ?? $m['file_name']));
+                                    $isImage = \Illuminate\Support\Str::startsWith($m['mime'] ?? '', 'image/');
+                                @endphp
 
-                                    {{-- Paste your existing <li>...</li> markup here, unchanged, using $m --}}
-                                    <li class="list-group-item p-3 d-flex gap-3 align-items-start">
-                                        {{-- Thumbnail / icon --}}
-                                        @if(!empty($m['thumb']))
-                                            <img src="{{ $m['thumb'] }}" alt="" class="rounded border" style="width:64px;height:64px;object-fit:cover;">
+                                <li
+                                    wire:key="media-{{ $id }}"
+                                    draggable="true"
+                                    x-on:dragstart="
+                                            dragId = {{ $id }};
+                                            $event.dataTransfer.effectAllowed = 'move';
+                                        "
+                                    x-on:dragover.prevent="
+                                            if (dragId === null || dragId === {{ $id }}) {
+                                                return;
+                                            }
+
+                                            const rect = $el.getBoundingClientRect();
+
+                                            dropId = {{ $id }};
+
+                                            dropPlacement =
+                                                $event.clientY < rect.top + (rect.height / 2)
+                                                    ? 'before'
+                                                    : 'after';
+                                        "
+                                    x-on:dragleave="
+                                            if (!$el.contains($event.relatedTarget)) {
+                                                dropId = null;
+                                                dropPlacement = null;
+                                            }
+                                        "
+                                    x-on:drop.prevent="
+                                            if (dragId !== null && dragId !== {{ $id }}) {
+                                                $wire.reorderItems(
+                                                    dragId,
+                                                    {{ $id }},
+                                                    @js($m['collection'] ?? null),
+                                                    dropPlacement ?? 'before'
+                                                );
+                                            }
+
+                                            dragId = null;
+                                            dropId = null;
+                                            dropPlacement = null;
+                                        "
+                                    x-on:dragend="
+                                            dragId = null;
+                                            dropId = null;
+                                            dropPlacement = null;
+                                        "
+                                    x-bind:style="
+                                            dropId === {{ $id }}
+                                                ? (
+                                                    dropPlacement === 'before'
+                                                        ? 'cursor:grab; box-shadow: inset 0 3px 0 var(--bs-primary)'
+                                                        : 'cursor:grab; box-shadow: inset 0 -3px 0 var(--bs-primary)'
+                                                )
+                                                : 'cursor:grab;'
+                                        "
+                                    x-bind:class="
+                                            dropId === {{ $id }}
+                                                ? 'bg-primary-subtle'
+                                                : ''
+                                        "
+                                    class="list-group-item p-3 d-flex gap-3 align-items-start"
+                                >
+                                    {{-- Drag handle --}}
+                                    <div class="text-muted flex-shrink-0 align-self-center" aria-hidden="true" title="Drag to reorder">
+                                        <svg style="width:16px;height:16px" viewBox="0 0 24 24" fill="currentColor">
+                                            <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+                                            <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+                                            <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+                                        </svg>
+                                    </div>
+
+                                    {{-- Thumbnail / icon --}}
+                                    @if(!empty($m['thumb']))
+                                        @if ($isImage)
+                                            <button
+                                                type="button"
+                                                @click.stop="openPreview(@js($m['url']), @js($linkText))"
+                                                title="Preview {{ $linkText }}"
+                                                class="btn p-0 border-0 flex-shrink-0"
+                                            >
+                                                <img
+                                                    src="{{ $m['thumb'] }}"
+                                                    alt="{{ $linkText }}"
+                                                    class="rounded border"
+                                                    style="width:64px;height:64px;object-fit:cover;"
+                                                >
+                                            </button>
                                         @else
-                                            <div class="rounded border d-grid text-muted align-items-center justify-content-center" style="width:64px;height:64px;place-items:center;">
-                                                <svg viewBox="0 0 24 24" style="width:28px;height:28px" fill="none" stroke="currentColor" stroke-width="1.5">
-                                                    <path d="M7 3h6l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
-                                                    <path d="M13 3v5h5"/>
-                                                </svg>
+                                            <img
+                                                src="{{ $m['thumb'] }}"
+                                                alt=""
+                                                class="rounded border flex-shrink-0"
+                                                style="width:64px;height:64px;object-fit:cover;"
+                                            >
+                                        @endif
+                                    @else
+                                        <div
+                                            class="rounded border d-grid text-muted align-items-center justify-content-center flex-shrink-0"
+                                            style="width:64px;height:64px;place-items:center;"
+                                        >
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                style="width:28px;height:28px"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                stroke-width="1.5"
+                                            >
+                                                <path d="M7 3h6l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
+                                                <path d="M13 3v5h5"/>
+                                            </svg>
+                                        </div>
+                                    @endif
+                                    {{-- Content (unchanged) --}}
+                                    <div class="flex-grow-1 min-w-0">
+                                        @if (! $isEditing)
+                                            <div class="fw-semibold text-truncate">
+                                                @if ($isImage)
+                                                    <button type="button" @click="openPreview(@js($m['url']), @js($linkText))" class="btn btn-link p-0 align-baseline">
+                                                        {{ $linkText }}
+                                                    </button>
+                                                @else
+                                                    <a href="{{ $m['url'] }}" target="_blank" class="link-primary text-decoration-none">
+                                                        {{ $linkText }}
+                                                    </a>
+                                                @endif
+                                            </div>
+                                            @if(!empty($m['description']))
+                                                <div class="small text-muted text-truncate">{{ $m['description'] }}</div>
+                                            @endif
+                                            <div class="small text-muted">
+                                                {{ number_format(($m['size'] ?? 0)/1024, 1) }} KB
+                                                <span class="mx-2">•</span>
+                                                <span class="text-uppercase">{{ $m['collection'] }}</span>
+                                            </div>
+                                        @else
+                                            {{-- your existing edit form for caption/description/order --}}
+                                            <div class="row g-2">
+                                                <div class="col-12 col-md-6">
+                                                    <div class="form-label small mb-1">Caption</div>
+                                                    <input type="text" wire:model.defer="editing.{{ $id }}.caption" class="form-control form-control-sm" />
+                                                    @error('editing.'.$id.'.caption') <div class="form-text text-danger">{{ $message }}</div> @enderror
+                                                </div>
+                                                <div class="col-12 col-md-6">
+                                                    <div class="form-label small mb-1">Description</div>
+                                                    <input type="text" wire:model.defer="editing.{{ $id }}.description" class="form-control form-control-sm" />
+                                                    @error('editing.'.$id.'.description') <div class="form-text text-danger">{{ $message }}</div> @enderror
+                                                </div>
+                                                <div class="col-12 col-md-3">
+                                                    <div class="form-label small mb-1">Order</div>
+                                                    <div style="max-width: 80px;">
+                                                        <input type="number" min="1" step="1" wire:model.defer="editing.{{ $id }}.order" class="form-control form-control-sm text-center" />
+                                                    </div>
+                                                    @error('editing.'.$id.'.order') <div class="form-text text-danger">{{ $message }}</div> @enderror
+                                                </div>
                                             </div>
                                         @endif
+                                    </div>
 
-                                        {{-- Content (unchanged) --}}
-                                        <div class="flex-grow-1 min-w-0">
-                                            @php $isImage = \Illuminate\Support\Str::startsWith($m['mime'] ?? '', 'image/'); @endphp
-                                            @if (! $isEditing)
-                                                <div class="fw-semibold text-truncate">
-                                                    @if ($isImage)
-                                                        <button type="button" @click="openPreview(@js($m['url']), @js($linkText))" class="btn btn-link p-0 align-baseline">
-                                                            {{ $linkText }}
-                                                        </button>
-                                                    @else
-                                                        <a href="{{ $m['url'] }}" target="_blank" class="link-primary text-decoration-none">
-                                                            {{ $linkText }}
-                                                        </a>
-                                                    @endif
-                                                </div>
-                                                @if(!empty($m['description']))
-                                                    <div class="small text-muted text-truncate">{{ $m['description'] }}</div>
-                                                @endif
-                                                <div class="small text-muted">
-                                                    {{ number_format(($m['size'] ?? 0)/1024, 1) }} KB
-                                                    <span class="mx-2">•</span>
-                                                    <span class="text-uppercase">{{ $m['collection'] }}</span>
-                                                </div>
-                                            @else
-                                                {{-- your existing edit form for caption/description/order --}}
-                                                <div class="row g-2">
-                                                    <div class="col-12 col-md-6">
-                                                        <div class="form-label small mb-1">Caption</div>
-                                                        <input type="text" wire:model.defer="editing.{{ $id }}.caption" class="form-control form-control-sm" />
-                                                        @error('editing.'.$id.'.caption') <div class="form-text text-danger">{{ $message }}</div> @enderror
-                                                    </div>
-                                                    <div class="col-12 col-md-6">
-                                                        <div class="form-label small mb-1">Description</div>
-                                                        <input type="text" wire:model.defer="editing.{{ $id }}.description" class="form-control form-control-sm" />
-                                                        @error('editing.'.$id.'.description') <div class="form-text text-danger">{{ $message }}</div> @enderror
-                                                    </div>
-                                                    <div class="col-12 col-md-3">
-                                                        <div class="form-label small mb-1">Order</div>
-                                                        <div style="max-width: 80px;">
-                                                            <input type="number" min="1" step="1" wire:model.defer="editing.{{ $id }}.order" class="form-control form-control-sm text-center" />
-                                                        </div>
-                                                        @error('editing.'.$id.'.order') <div class="form-text text-danger">{{ $message }}</div> @enderror
-                                                    </div>
-                                                </div>
-                                            @endif
-                                        </div>
-
-                                        <div class="d-flex gap-2 align-self-stretch align-items-center">
-                                            @if (! $isEditing)
-                                                <button type="button" wire:click="startEdit({{ $id }})" class="btn btn-outline-secondary btn-sm">Edit</button>
-                                                <button type="button" wire:click="confirmDelete({{ $id }})" class="btn btn-outline-danger btn-sm">Delete</button>
-                                            @else
-                                                <div class="d-flex gap-2 mt-2 mt-md-0">
-                                                    <button type="button" wire:click="saveEdit({{ $id }})" class="btn btn-outline-primary btn-sm">Save</button>
-                                                    <button type="button" wire:click="cancelEdit({{ $id }})" class="btn btn-outline-secondary btn-sm">Cancel</button>
-                                                </div>
-                                            @endif
-                                        </div>
-                                    </li>
-                                @endforeach
-                            </ul>
-                        @endforeach
-                    @else
-                        <ul class="list-group list-group-flush">
+                                    <div class="d-flex gap-2 align-self-stretch align-items-center">
+                                        @if (! $isEditing)
+                                            <button type="button" wire:click="startEdit({{ $id }})" class="btn btn-outline-secondary btn-sm">Edit</button>
+                                            <button type="button" wire:click="confirmDelete({{ $id }})" class="btn btn-outline-danger btn-sm">Delete</button>
+                                        @else
+                                            <div class="d-flex gap-2 mt-2 mt-md-0">
+                                                <button type="button" wire:click="saveEdit({{ $id }})" class="btn btn-outline-primary btn-sm">Save</button>
+                                                <button type="button" wire:click="cancelEdit({{ $id }})" class="btn btn-outline-secondary btn-sm">Cancel</button>
+                                            </div>
+                                        @endif
+                                    </div>
+                                </li>
+                            @endforeach
+                        </ul>
+                    @endforeach
+                @else
+                    <ul
+                        class="list-group list-group-flush"
+                        x-data="{
+                                dragId: null,
+                                dropId: null,
+                                dropPlacement: null
+                            }"
+                    >
                         @foreach ($items as $m)
                             @php
                                 $id = (int) $m['id'];
                                 $isEditing = isset($editing[$id]);
                                 $linkText = $m['caption'] ?: ($m['name'] ?: ($m['original_name'] ?? $m['file_name']));
+                                $isImage = \Illuminate\Support\Str::startsWith($m['mime'] ?? '', 'image/');
                             @endphp
 
-                            <li class="list-group-item p-3 d-flex gap-3 align-items-start">
+                            <li
+                                wire:key="media-{{ $id }}"
+                                draggable="true"
+                                x-on:dragstart="
+                                    dragId = {{ $id }};
+                                    $event.dataTransfer.effectAllowed = 'move';
+                                "
+                                x-on:dragover.prevent="
+                                    if (dragId === null || dragId === {{ $id }}) {
+                                        return;
+                                    }
+
+                                    const rect = $el.getBoundingClientRect();
+
+                                    dropId = {{ $id }};
+                                    dropPlacement =
+                                        $event.clientY < rect.top + (rect.height / 2)
+                                            ? 'before'
+                                            : 'after';
+                                "
+                                x-on:dragleave="
+                                    if (!$el.contains($event.relatedTarget)) {
+                                        dropId = null;
+                                        dropPlacement = null;
+                                    }
+                                "
+                                x-on:drop.prevent="
+                                    if (dragId !== null && dragId !== {{ $id }}) {
+                                        $wire.reorderItems(
+                                            dragId,
+                                            {{ $id }},
+                                            null,
+                                            dropPlacement ?? 'before'
+                                        );
+                                    }
+
+                                    dragId = null;
+                                    dropId = null;
+                                    dropPlacement = null;
+                                "
+                                x-on:dragend="
+                                    dragId = null;
+                                    dropId = null;
+                                    dropPlacement = null;
+                                "
+                                x-bind:style="
+                                    dropId === {{ $id }}
+                                        ? (
+                                            dropPlacement === 'before'
+                                                ? 'cursor:grab; box-shadow: inset 0 3px 0 var(--bs-primary)'
+                                                : 'cursor:grab; box-shadow: inset 0 -3px 0 var(--bs-primary)'
+                                        )
+                                        : 'cursor:grab;'
+                                "
+                                x-bind:class="
+                                    dropId === {{ $id }}
+                                        ? 'bg-primary-subtle'
+                                        : ''
+                                "
+                                class="list-group-item p-3 d-flex gap-3 align-items-start"
+                            >
+                                {{-- Drag handle --}}
+                                <div class="text-muted flex-shrink-0 align-self-center" aria-hidden="true" title="Drag to reorder">
+                                    <svg style="width:16px;height:16px" viewBox="0 0 24 24" fill="currentColor">
+                                        <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+                                        <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+                                        <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+                                    </svg>
+                                </div>
+
                                 {{-- Thumbnail / icon --}}
                                 @if(!empty($m['thumb']))
-                                    <img src="{{ $m['thumb'] }}" alt="" class="rounded border" style="width:64px;height:64px;object-fit:cover;">
+                                    @if ($isImage)
+                                        <button
+                                            type="button"
+                                            @click.stop="openPreview(@js($m['url']), @js($linkText))"
+                                            title="Preview {{ $linkText }}"
+                                            class="btn p-0 border-0 flex-shrink-0"
+                                        >
+                                            <img
+                                                src="{{ $m['thumb'] }}"
+                                                alt="{{ $linkText }}"
+                                                class="rounded border"
+                                                style="width:64px;height:64px;object-fit:cover;"
+                                            >
+                                        </button>
+                                    @else
+                                        <img
+                                            src="{{ $m['thumb'] }}"
+                                            alt=""
+                                            class="rounded border flex-shrink-0"
+                                            style="width:64px;height:64px;object-fit:cover;"
+                                        >
+                                    @endif
                                 @else
                                     <div class="rounded border d-grid text-muted align-items-center justify-content-center" style="width:64px;height:64px;place-items:center;">
                                         <svg viewBox="0 0 24 24" style="width:28px;height:28px" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -377,10 +659,6 @@
                                 {{-- Content --}}
                                 <div class="flex-grow-1 min-w-0">
                                     @if (! $isEditing)
-                                        @php
-                                            $isImage = \Illuminate\Support\Str::startsWith($m['mime'] ?? '', 'image/');
-                                        @endphp
-
                                         <div class="fw-semibold text-truncate">
                                             @if ($isImage)
                                                 <button
@@ -487,9 +765,8 @@
                                     @endif
                                 </div>
                             </li>
-                            @endforeach
-                            </ul>
-                    @endif
+                        @endforeach
+                    </ul>
                 @endif
 
                 <div
