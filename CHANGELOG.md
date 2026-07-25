@@ -9,16 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## [Unreleased]
+
 ### Added
-- **Drag-and-drop reordering.** Both themes now support dragging rows in the attached-media list ("Current gallery") and cards in the pending upload queue ("Ready to upload") to reorder them. Backed by two new public methods: `reorderItems(int $draggedId, int $targetId, ?string $collection = null)`, which persists `order_column` for already-saved media (id-scoped to the resolved model + collection, respects `authorizeAbility`, and — under `list-all` — is scoped per collection group), and `reorderQueue(int $draggedKey, int $targetKey)`, which re-sequences the in-memory upload queue before files are saved. Dispatches a new `media-reordered` event. Implemented with native HTML5 drag-and-drop and the existing Alpine.js dependency — no new package dependency added. Closes the "Drag-to-reorder" roadmap item.
 
 ### Changed
-- 
 
 ### Fixed
-- 
 
 ---
+
+## [v0.6.0] — 2026-07-25
+
+### Added
+- **Drag-and-drop media ordering.** Added native HTML5 drag-and-drop reordering to both Tailwind and Bootstrap themes for attached media and the pending upload queue.
+    - Supports inserting items before or after the current target, including moving items to the end of the list.
+    - Displays a visual drop-position indicator while dragging.
+    - Persists attached-media ordering using Spatie Media Library's `order_column`.
+    - Supports reordering pending uploads before they are saved.
+    - Keeps `list-all` ordering scoped to the individual media collection.
+    - Dispatches a `media-reordered` event after persisted media is reordered.
+    - Uses the existing Alpine.js integration with no additional JavaScript dependency.
+- **Clickable thumbnail previews.** Image thumbnails for pending uploads and attached media can now be clicked to open the existing preview overlay.
+
+### Changed
+- Updated documentation to clarify that `multiple` controls file selection but does not override Spatie Media Library's `singleFile()` collection behavior.
+- Updated image conversion examples to use `Spatie\Image\Enums\Fit` for compatibility with current Spatie Image releases.
 
 ## [v0.5.0] — 2026-07-20
 ### Added
@@ -153,7 +168,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/codebyray/livewire-media-uploader/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/codebyray/livewire-media-uploader/compare/v0.6.0...HEAD
+[v0.6.0]: https://github.com/codebyray/livewire-media-uploader/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://github.com/codebyray/livewire-media-uploader/releases/tag/v0.5.0
 [v0.4.0]: https://github.com/codebyray/livewire-media-uploader/releases/tag/v0.4.0
 [v0.3.0]: https://github.com/codebyray/livewire-media-uploader/releases/tag/v0.3.0
