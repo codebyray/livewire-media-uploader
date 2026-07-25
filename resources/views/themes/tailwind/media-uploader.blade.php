@@ -135,7 +135,14 @@
 
         <!-- Selected queue -->
         @if(!empty($selected) && count($selected) > 0)
-            <div class="px-4 pb-4" x-data="{ dragQueueKey: null }">
+            <div
+                class="px-4 pb-4"
+                x-data="{
+                    dragQueueKey: null,
+                    dropQueueKey: null,
+                    dropQueuePlacement: null
+                }"
+            >
                 <div class="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Ready to upload: <span class="font-normal text-neutral-500 dark:text-neutral-400">(drag to reorder)</span></div>
                 <div class="mt-2 space-y-2">
                     @foreach ($selected as $sel)
@@ -147,10 +154,61 @@
                         <div
                             wire:key="queue-{{ $sel['queue_key'] }}"
                             draggable="true"
-                            x-on:dragstart="dragQueueKey = {{ $sel['queue_key'] }}; $event.dataTransfer.effectAllowed = 'move'"
-                            x-on:dragover.prevent
-                            x-on:drop.prevent="if (dragQueueKey !== null) { $wire.reorderQueue(dragQueueKey, {{ $sel['queue_key'] }}); dragQueueKey = null }"
-                            x-on:dragend="dragQueueKey = null"
+                            x-on:dragstart="
+                                dragQueueKey = {{ $sel['queue_key'] }};
+                                $event.dataTransfer.effectAllowed = 'move';
+                            "
+                            x-on:dragover.prevent="
+                                if (dragQueueKey === null || dragQueueKey === {{ $sel['queue_key'] }}) {
+                                    return;
+                                }
+
+                                const rect = $el.getBoundingClientRect();
+
+                                dropQueueKey = {{ $sel['queue_key'] }};
+                                dropQueuePlacement =
+                                    $event.clientY < rect.top + (rect.height / 2)
+                                        ? 'before'
+                                        : 'after';
+                            "
+                            x-on:dragleave="
+                                if (!$el.contains($event.relatedTarget)) {
+                                    dropQueueKey = null;
+                                    dropQueuePlacement = null;
+                                }
+                            "
+                            x-on:drop.prevent="
+                                if (dragQueueKey !== null && dragQueueKey !== {{ $sel['queue_key'] }}) {
+                                    $wire.reorderQueue(
+                                        dragQueueKey,
+                                        {{ $sel['queue_key'] }},
+                                        dropQueuePlacement ?? 'before'
+                                    );
+                                }
+
+                                dragQueueKey = null;
+                                dropQueueKey = null;
+                                dropQueuePlacement = null;
+                            "
+                            x-on:dragend="
+                                dragQueueKey = null;
+                                dropQueueKey = null;
+                                dropQueuePlacement = null;
+                            "
+                            x-bind:style="
+                                dropQueueKey === {{ $sel['queue_key'] }}
+                                    ? (
+                                        dropQueuePlacement === 'before'
+                                            ? 'box-shadow: inset 0 3px 0 rgb(14 165 233)'
+                                            : 'box-shadow: inset 0 -3px 0 rgb(14 165 233)'
+                                    )
+                                    : ''
+                            "
+                            x-bind:class="
+                                dropQueueKey === {{ $sel['queue_key'] }}
+                                    ? 'bg-sky-50/70 dark:bg-sky-950/20'
+                                    : ''
+                            "
                             class="rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 p-3 cursor-grab active:cursor-grabbing"
                         >
                             <!-- top row: drag handle + name + size -->
@@ -172,7 +230,19 @@
                                     <!-- thumb -->
                                     <div class="md:col-span-2">
                                         @if($canPreview)
-                                            <img src="{{ $temp->temporaryUrl() }}" alt="" class="w-20 h-20 object-cover rounded-md border border-neutral-200 dark:border-neutral-700">
+                                            <button
+                                                type="button"
+                                                @click.stop="openPreview(@js($temp->temporaryUrl()), @js($sel['name']))"
+                                                title="Preview {{ $sel['name'] }}"
+                                                class="shrink-0 rounded-md cursor-pointer
+                                                       focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                                            >
+                                                <img
+                                                    src="{{ $temp->temporaryUrl() }}"
+                                                    alt="{{ $sel['name'] }}"
+                                                    class="w-20 h-20 object-cover rounded-md border border-neutral-200 dark:border-neutral-700"
+                                                >
+                                            </button>
                                         @else
                                             <div class="w-20 h-20 grid place-items-center rounded-md border border-neutral-200 dark:border-neutral-700 text-neutral-400 dark:text-neutral-500">
                                                 <svg viewBox="0 0 24 24" class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -308,7 +378,13 @@
                             </div>
                         </div>
 
-                        <ul class="divide-y divide-neutral-200 dark:divide-neutral-800" x-data="{ dragId: null }">
+                        <ul class="divide-y divide-neutral-200 dark:divide-neutral-800"
+                            x-data="{
+                                dragId: null,
+                                dropId: null,
+                                dropPlacement: null
+                            }"
+                        >
                             @foreach ($collectionItems as $m)
                                 @php
                                     $id = (int) $m['id'];
@@ -320,10 +396,63 @@
                                 <li
                                     wire:key="media-{{ $id }}"
                                     draggable="true"
-                                    x-on:dragstart="dragId = {{ $id }}; $event.dataTransfer.effectAllowed = 'move'"
-                                    x-on:dragover.prevent
-                                    x-on:drop.prevent="if (dragId !== null) { $wire.reorderItems(dragId, {{ $id }}, @js($m['collection'] ?? null)); dragId = null }"
-                                    x-on:dragend="dragId = null"
+                                    x-on:dragstart="
+                                        dragId = {{ $id }};
+                                        $event.dataTransfer.effectAllowed = 'move';
+                                    "
+                                    x-on:dragover.prevent="
+                                        if (dragId === null || dragId === {{ $id }}) {
+                                            return;
+                                        }
+
+                                        const rect = $el.getBoundingClientRect();
+
+                                        dropId = {{ $id }};
+
+                                        dropPlacement =
+                                            $event.clientY < rect.top + (rect.height / 2)
+                                                ? 'before'
+                                                : 'after';
+                                    "
+                                    x-on:dragleave="
+                                        if (!$el.contains($event.relatedTarget)) {
+                                            dropId = null;
+                                            dropPlacement = null;
+                                        }
+                                    "
+                                    x-on:drop.prevent="
+                                        if (dragId !== null && dragId !== {{ $id }}) {
+                                            $wire.reorderItems(
+                                                dragId,
+                                                {{ $id }},
+                                                @js($m['collection'] ?? null),
+                                                dropPlacement ?? 'before'
+                                            );
+                                        }
+
+                                        dragId = null;
+                                        dropId = null;
+                                        dropPlacement = null;
+                                    "
+                                    x-on:dragend="
+                                        dragId = null;
+                                        dropId = null;
+                                        dropPlacement = null;
+                                    "
+                                    x-bind:style="
+                                        dropId === {{ $id }}
+                                            ? (
+                                                dropPlacement === 'before'
+                                                    ? 'box-shadow: inset 0 3px 0 rgb(14 165 233)'
+                                                    : 'box-shadow: inset 0 -3px 0 rgb(14 165 233)'
+                                            )
+                                            : ''
+                                    "
+                                    x-bind:class="
+                                        dropId === {{ $id }}
+                                            ? 'bg-sky-50/70 dark:bg-sky-950/20'
+                                            : ''
+                                    "
                                     class="p-3 flex content-center gap-3 cursor-grab active:cursor-grabbing"
                                 >
                                     {{-- Drag handle --}}
@@ -337,14 +466,36 @@
 
                                     {{-- Thumbnail / icon --}}
                                     @if(!empty($m['thumb']))
-                                        <img src="{{ $m['thumb'] }}" alt="" class="rounded-md object-cover w-16 h-16 border border-neutral-200 dark:border-neutral-700">
-                                    @else
-                                        <div class="rounded-md w-16 h-16 grid place-items-center border border-neutral-200 dark:border-neutral-700 text-neutral-400 dark:text-neutral-500">
-                                            <svg viewBox="0 0 24 24" class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="1.5">
-                                                <path d="M7 3h6l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
-                                                <path d="M13 3v5h5"/>
-                                            </svg>
-                                        </div>
+                                        @if ($isImage)
+                                            <button
+                                                type="button"
+                                                @click.stop="openPreview(
+                                                    @js($m['url']),
+                                                    @js($linkText)
+                                                )"
+                                                title="Preview {{ $linkText }}"
+                                                class="shrink-0 rounded-md cursor-pointer
+                                                   focus:outline-none
+                                                   focus-visible:ring-2
+                                                   focus-visible:ring-sky-500"
+                                            >
+                                                <img
+                                                    src="{{ $m['thumb'] }}"
+                                                    alt="{{ $linkText }}"
+                                                    class="rounded-md object-cover w-16 h-16
+                                                    border border-neutral-200
+                                                    dark:border-neutral-700"
+                                                >
+                                            </button>
+                                        @else
+                                            <img
+                                                src="{{ $m['thumb'] }}"
+                                                alt=""
+                                                class="rounded-md object-cover w-16 h-16
+                                               border border-neutral-200
+                                               dark:border-neutral-700"
+                                            >
+                                        @endif
                                     @endif
 
                                     {{-- Content --}}
@@ -488,7 +639,14 @@
                     @endforeach
                 @else
                     {{-- SINGLE COLLECTION (original rendering) --}}
-                    <ul class="divide-y divide-neutral-200 dark:divide-neutral-800" x-data="{ dragId: null }">
+                    <ul
+                        class="divide-y divide-neutral-200 dark:divide-neutral-800"
+                        x-data="{
+                            dragId: null,
+                            dropId: null,
+                            dropPlacement: null
+                        }"
+                    >
                         @foreach ($items as $m)
                             @php
                                 $id = (int) $m['id'];
@@ -500,10 +658,62 @@
                             <li
                                 wire:key="media-{{ $id }}"
                                 draggable="true"
-                                x-on:dragstart="dragId = {{ $id }}; $event.dataTransfer.effectAllowed = 'move'"
-                                x-on:dragover.prevent
-                                x-on:drop.prevent="if (dragId !== null) { $wire.reorderItems(dragId, {{ $id }}); dragId = null }"
-                                x-on:dragend="dragId = null"
+                                x-on:dragstart="
+                                    dragId = {{ $id }};
+                                    $event.dataTransfer.effectAllowed = 'move';
+                                "
+                                x-on:dragover.prevent="
+                                    if (dragId === null || dragId === {{ $id }}) {
+                                        return;
+                                    }
+
+                                    const rect = $el.getBoundingClientRect();
+
+                                    dropId = {{ $id }};
+                                    dropPlacement =
+                                        $event.clientY < rect.top + (rect.height / 2)
+                                            ? 'before'
+                                            : 'after';
+                                "
+                                x-on:dragleave="
+                                    if (!$el.contains($event.relatedTarget)) {
+                                        dropId = null;
+                                        dropPlacement = null;
+                                    }
+                                "
+                                x-on:drop.prevent="
+                                    if (dragId !== null && dragId !== {{ $id }}) {
+                                        $wire.reorderItems(
+                                            dragId,
+                                            {{ $id }},
+                                            null,
+                                            dropPlacement ?? 'before'
+                                        );
+                                    }
+
+                                    dragId = null;
+                                    dropId = null;
+                                    dropPlacement = null;
+                                "
+                                x-on:dragend="
+                                    dragId = null;
+                                    dropId = null;
+                                    dropPlacement = null;
+                                "
+                                x-bind:style="
+                                    dropId === {{ $id }}
+                                        ? (
+                                            dropPlacement === 'before'
+                                                ? 'box-shadow: inset 0 3px 0 rgb(14 165 233)'
+                                                : 'box-shadow: inset 0 -3px 0 rgb(14 165 233)'
+                                        )
+                                        : ''
+                                "
+                                x-bind:class="
+                                    dropId === {{ $id }}
+                                        ? 'bg-sky-50/70 dark:bg-sky-950/20'
+                                        : ''
+                                "
                                 class="p-3 flex content-center gap-3 cursor-grab active:cursor-grabbing"
                             >
                                 {{-- Drag handle --}}
@@ -517,7 +727,29 @@
 
                                 {{-- Thumbnail / icon --}}
                                 @if(!empty($m['thumb']))
-                                    <img src="{{ $m['thumb'] }}" alt="" class="rounded-md object-cover w-16 h-16 border border-neutral-200 dark:border-neutral-700">
+                                    @if ($isImage)
+                                        <button
+                                            type="button"
+                                            @click.stop="openPreview(@js($m['url']), @js($linkText))"
+                                            title="Preview {{ $linkText }}"
+                                            class="shrink-0 rounded-md cursor-pointer
+                                                   focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                                        >
+                                            <img
+                                                src="{{ $m['thumb'] }}"
+                                                alt="{{ $linkText }}"
+                                                class="rounded-md object-cover w-16 h-16
+                                                       border border-neutral-200 dark:border-neutral-700"
+                                            >
+                                        </button>
+                                    @else
+                                        <img
+                                            src="{{ $m['thumb'] }}"
+                                            alt=""
+                                            class="rounded-md object-cover w-16 h-16
+                                                   border border-neutral-200 dark:border-neutral-700"
+                                        >
+                                    @endif
                                 @else
                                     <div class="rounded-md w-16 h-16 grid place-items-center border border-neutral-200 dark:border-neutral-700 text-neutral-400 dark:text-neutral-500">
                                         <svg viewBox="0 0 24 24" class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="1.5">

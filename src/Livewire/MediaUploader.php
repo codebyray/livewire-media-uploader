@@ -536,7 +536,7 @@ class MediaUploader extends Component
      * Both ids are re-validated against the model's own media in that
      * collection, so a crafted id from outside the scope is a no-op.
      */
-    public function reorderItems(int $draggedId, int $targetId, ?string $collection = null): void
+    public function reorderItems(int $draggedId, int $targetId, ?string $collection = null, string $placement = 'before'): void
     {
         if (! $this->hasTarget() || $draggedId === $targetId) {
             return;
@@ -554,23 +554,43 @@ class MediaUploader extends Component
             ->pluck('id')
             ->all();
 
-        if (! in_array($draggedId, $ids, true) || ! in_array($targetId, $ids, true)) {
+        if (
+            ! in_array($draggedId, $ids, true) ||
+            ! in_array($targetId, $ids, true)
+        ) {
             return;
         }
 
+        $placement = $placement === 'after'
+            ? 'after'
+            : 'before';
+
+        // Remove the dragged item from its current position.
         $ids = array_values(array_diff($ids, [$draggedId]));
+
         $targetPos = array_search($targetId, $ids, true);
+
+        // Dropping on the lower half of a row means insert after it.
+        if ($placement === 'after') {
+            $targetPos++;
+        }
+
         array_splice($ids, $targetPos, 0, [$draggedId]);
 
         foreach ($ids as $i => $id) {
-            Media::whereKey($id)->update(['order_column' => $i + 1]);
+            Media::whereKey($id)->update([
+                                             'order_column' => $i + 1,
+                                         ]);
         }
 
         if ($this->showList) {
             $this->loadItems();
         }
 
-        $this->dispatch('media-reordered', collection: $collectionName);
+        $this->dispatch(
+                        'media-reordered',
+            collection: $collectionName
+        );
     }
 
     /**
@@ -578,30 +598,63 @@ class MediaUploader extends Component
      * "Upload" is clicked). Purely in-memory — re-sequences $uploads and
      * $pendingMeta and refreshes the derived $selected list/order numbers.
      */
-    public function reorderQueue(int $draggedKey, int $targetKey): void
+    public function reorderQueue(int $draggedKey, int $targetKey, string $placement = 'before'): void
     {
-        if ($draggedKey === $targetKey
-            || ! array_key_exists($draggedKey, $this->uploads)
-            || ! array_key_exists($targetKey, $this->uploads)) {
+        if (
+            $draggedKey === $targetKey ||
+            ! array_key_exists($draggedKey, $this->uploads) ||
+            ! array_key_exists($targetKey, $this->uploads)
+        ) {
             return;
         }
 
+        $placement = $placement === 'after'
+            ? 'after'
+            : 'before';
+
         $keys = array_keys($this->uploads);
-        $keys = array_values(array_diff($keys, [$draggedKey]));
-        $targetPos = array_search($targetKey, $keys, true);
-        array_splice($keys, $targetPos, 0, [$draggedKey]);
+
+        $keys = array_values(
+            array_diff($keys, [$draggedKey])
+        );
+
+        $targetPos = array_search(
+            $targetKey,
+            $keys,
+            true
+        );
+
+        if ($placement === 'after') {
+            $targetPos++;
+        }
+
+        array_splice(
+            $keys,
+            $targetPos,
+            0,
+            [$draggedKey]
+        );
 
         $newUploads = [];
         $newPendingMeta = [];
+
         foreach ($keys as $i => $key) {
             $newUploads[$i] = $this->uploads[$key];
-            $meta = $this->pendingMeta[$key] ?? ['caption' => null, 'description' => null, 'order' => null];
+
+            $meta = $this->pendingMeta[$key] ?? [
+                'caption' => null,
+                'description' => null,
+                'order' => null,
+            ];
+
             $meta['order'] = $i + 1;
+
             $newPendingMeta[$i] = $meta;
         }
 
         $this->uploads = $newUploads;
         $this->pendingMeta = $newPendingMeta;
+
         $this->updatedUploads();
     }
 
