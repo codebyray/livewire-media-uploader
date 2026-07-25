@@ -222,6 +222,72 @@ it('skips on name conflict when configured', function () {
         ->and($post->getFirstMedia('images')->file_name)->toBe('doc.png');
 });
 
+it('reorders attached media via drag-and-drop', function () {
+    $post = TestPost::create(['title' => 'Hello']);
+
+    $a = $post->addMedia(TemporaryUploadedFile::fake()->image('a.jpg', 20, 20)->getRealPath())
+        ->usingFileName('a.jpg')->toMediaCollection('images');
+    $b = $post->addMedia(TemporaryUploadedFile::fake()->image('b.jpg', 20, 20)->getRealPath())
+        ->usingFileName('b.jpg')->toMediaCollection('images');
+    $c = $post->addMedia(TemporaryUploadedFile::fake()->image('c.jpg', 20, 20)->getRealPath())
+        ->usingFileName('c.jpg')->toMediaCollection('images');
+
+    // Starting order is a(1), b(2), c(3). Drag c to sit where a is.
+    Livewire::test(MediaUploader::class, [
+        'for' => $post,
+        'collection' => 'images',
+        'showList' => true,
+    ])
+        ->call('reorderItems', $c->id, $a->id)
+        ->assertDispatched('media-reordered');
+
+    $order = $post->fresh()->media()->where('collection_name', 'images')
+        ->orderBy('order_column')->pluck('file_name')->all();
+
+    expect($order)->toBe(['c.jpg', 'a.jpg', 'b.jpg']);
+});
+
+it('ignores reorderItems for media outside the resolved collection', function () {
+    $post = TestPost::create(['title' => 'Hello']);
+
+    $a = $post->addMedia(TemporaryUploadedFile::fake()->image('a.jpg', 20, 20)->getRealPath())
+        ->usingFileName('a.jpg')->toMediaCollection('images');
+    $doc = $post->addMedia(TemporaryUploadedFile::fake()->create('doc.pdf', 10)->getRealPath())
+        ->usingFileName('doc.pdf')->toMediaCollection('documents');
+
+    Livewire::test(MediaUploader::class, [
+        'for' => $post,
+        'collection' => 'images',
+        'showList' => true,
+    ])->call('reorderItems', $doc->id, $a->id);
+
+    // Nothing changed: the foreign-collection id was rejected.
+    expect($a->fresh()->order_column)->toBe(1)
+        ->and($doc->fresh()->collection_name)->toBe('documents');
+});
+
+it('reorders the pending upload queue before files are uploaded', function () {
+    $post = TestPost::create(['title' => 'Hello']);
+
+    $f1 = TemporaryUploadedFile::fake()->image('one.jpg', 20, 20);
+    $f2 = TemporaryUploadedFile::fake()->image('two.jpg', 20, 20);
+    $f3 = TemporaryUploadedFile::fake()->image('three.jpg', 20, 20);
+
+    Livewire::test(MediaUploader::class, [
+        'for' => $post,
+        'collection' => 'images',
+        'preset' => 'images',
+    ])
+        ->set('uploads', [$f1, $f2, $f3])
+        ->call('reorderQueue', 2, 0) // drag "three.jpg" (key 2) to the front
+        ->assertSet('selected.0.name', 'three.jpg')
+        ->assertSet('selected.1.name', 'one.jpg')
+        ->assertSet('selected.2.name', 'two.jpg')
+        ->assertSet('pendingMeta.0.order', 1)
+        ->assertSet('pendingMeta.1.order', 2)
+        ->assertSet('pendingMeta.2.order', 3);
+});
+
 it('throws ModelResolutionException if model is not saved', function () {
     $post = new TestPost(['title' => 'Unsaved Post']);
 

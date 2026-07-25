@@ -126,8 +126,8 @@
 
         <!-- Selected queue -->
         @if(!empty($selected) && count($selected) > 0)
-            <div class="px-3 pb-3">
-                <div class="small fw-semibold text-body">Ready to upload:</div>
+            <div class="px-3 pb-3" x-data="{ dragQueueKey: null }">
+                <div class="small fw-semibold text-body">Ready to upload: <span class="fw-normal text-muted">(drag to reorder)</span></div>
                 <div class="mt-2 d-flex flex-column gap-2">
                     @foreach ($selected as $sel)
                         @php
@@ -135,11 +135,27 @@
                             $canPreview = ($sel['is_image'] ?? false) && $temp && method_exists($temp, 'temporaryUrl');
                         @endphp
 
-                        <div class="rounded-3 border p-3 bg-light">
-                            <!-- top row: name + size -->
+                        <div
+                            wire:key="queue-{{ $sel['queue_key'] }}"
+                            draggable="true"
+                            x-on:dragstart="dragQueueKey = {{ $sel['queue_key'] }}; $event.dataTransfer.effectAllowed = 'move'"
+                            x-on:dragover.prevent
+                            x-on:drop.prevent="if (dragQueueKey !== null) { $wire.reorderQueue(dragQueueKey, {{ $sel['queue_key'] }}); dragQueueKey = null }"
+                            x-on:dragend="dragQueueKey = null"
+                            class="rounded-3 border p-3 bg-light"
+                            style="cursor:grab;"
+                        >
+                            <!-- top row: drag handle + name + size -->
                             <div class="d-flex align-items-center justify-content-between gap-3">
-                                <span class="text-truncate small text-body">{{ $sel['name'] }}</span>
-                                <span class="small text-muted">{{ number_format(($sel['size'] ?? 0)/1024, 1) }} KB</span>
+                                <div class="d-flex align-items-center gap-2 text-truncate">
+                                    <svg class="text-muted flex-shrink-0" style="width:16px;height:16px" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                        <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+                                        <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+                                        <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+                                    </svg>
+                                    <span class="text-truncate small text-body">{{ $sel['name'] }}</span>
+                                </div>
+                                <span class="small text-muted flex-shrink-0">{{ number_format(($sel['size'] ?? 0)/1024, 1) }} KB</span>
                             </div>
 
                             <!-- form row -->
@@ -268,7 +284,7 @@
                                 <div class="small fw-semibold text-body text-uppercase">{{ $collectionName }}</div>
                             </div>
 
-                            <ul class="list-group list-group-flush">
+                            <ul class="list-group list-group-flush" x-data="{ dragId: null }">
                                 @foreach ($collectionItems as $m)
                                     @php
                                         $id = (int) $m['id'];
@@ -276,8 +292,25 @@
                                         $linkText = $m['caption'] ?: ($m['name'] ?: ($m['original_name'] ?? $m['file_name']));
                                     @endphp
 
-                                    {{-- Paste your existing <li>...</li> markup here, unchanged, using $m --}}
-                                    <li class="list-group-item p-3 d-flex gap-3 align-items-start">
+                                    <li
+                                        wire:key="media-{{ $id }}"
+                                        draggable="true"
+                                        x-on:dragstart="dragId = {{ $id }}; $event.dataTransfer.effectAllowed = 'move'"
+                                        x-on:dragover.prevent
+                                        x-on:drop.prevent="if (dragId !== null) { $wire.reorderItems(dragId, {{ $id }}, @js($m['collection'] ?? null)); dragId = null }"
+                                        x-on:dragend="dragId = null"
+                                        class="list-group-item p-3 d-flex gap-3 align-items-start"
+                                        style="cursor:grab;"
+                                    >
+                                        {{-- Drag handle --}}
+                                        <div class="text-muted flex-shrink-0 align-self-center" aria-hidden="true" title="Drag to reorder">
+                                            <svg style="width:16px;height:16px" viewBox="0 0 24 24" fill="currentColor">
+                                                <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+                                                <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+                                                <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+                                            </svg>
+                                        </div>
+
                                         {{-- Thumbnail / icon --}}
                                         @if(!empty($m['thumb']))
                                             <img src="{{ $m['thumb'] }}" alt="" class="rounded border" style="width:64px;height:64px;object-fit:cover;">
@@ -353,7 +386,7 @@
                             </ul>
                         @endforeach
                     @else
-                        <ul class="list-group list-group-flush">
+                        <ul class="list-group list-group-flush" x-data="{ dragId: null }">
                         @foreach ($items as $m)
                             @php
                                 $id = (int) $m['id'];
@@ -361,7 +394,25 @@
                                 $linkText = $m['caption'] ?: ($m['name'] ?: ($m['original_name'] ?? $m['file_name']));
                             @endphp
 
-                            <li class="list-group-item p-3 d-flex gap-3 align-items-start">
+                            <li
+                                wire:key="media-{{ $id }}"
+                                draggable="true"
+                                x-on:dragstart="dragId = {{ $id }}; $event.dataTransfer.effectAllowed = 'move'"
+                                x-on:dragover.prevent
+                                x-on:drop.prevent="if (dragId !== null) { $wire.reorderItems(dragId, {{ $id }}); dragId = null }"
+                                x-on:dragend="dragId = null"
+                                class="list-group-item p-3 d-flex gap-3 align-items-start"
+                                style="cursor:grab;"
+                            >
+                                {{-- Drag handle --}}
+                                <div class="text-muted flex-shrink-0 align-self-center" aria-hidden="true" title="Drag to reorder">
+                                    <svg style="width:16px;height:16px" viewBox="0 0 24 24" fill="currentColor">
+                                        <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+                                        <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+                                        <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+                                    </svg>
+                                </div>
+
                                 {{-- Thumbnail / icon --}}
                                 @if(!empty($m['thumb']))
                                     <img src="{{ $m['thumb'] }}" alt="" class="rounded border" style="width:64px;height:64px;object-fit:cover;">

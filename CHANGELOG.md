@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
-- 
+- **Drag-and-drop reordering.** Both themes now support dragging rows in the attached-media list ("Current gallery") and cards in the pending upload queue ("Ready to upload") to reorder them. Backed by two new public methods: `reorderItems(int $draggedId, int $targetId, ?string $collection = null)`, which persists `order_column` for already-saved media (id-scoped to the resolved model + collection, respects `authorizeAbility`, and — under `list-all` — is scoped per collection group), and `reorderQueue(int $draggedKey, int $targetKey)`, which re-sequences the in-memory upload queue before files are saved. Dispatches a new `media-reordered` event. Implemented with native HTML5 drag-and-drop and the existing Alpine.js dependency — no new package dependency added. Closes the "Drag-to-reorder" roadmap item.
 
 ### Changed
 - 
