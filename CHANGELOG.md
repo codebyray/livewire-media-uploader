@@ -10,11 +10,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.7.0] — 2026-09-25
+
 ### Added
+- Optional image watermarking before storage, with global configuration and a per-uploader `watermark` override.
+- Full watermark and package-configuration documentation.
+- Explicit `spatie/image` v3 dependency for the image-processing API used by the package.
+- Dependency security auditing in CI.
 
 ### Changed
+- Staged uploads through a local temporary file so watermarking and Media Library storage work when Livewire uses remote temporary storage.
+- Preset `max_kb`, `types`, and `mimes` values now remain overridable per uploader while correctly supplying defaults.
+- Media Library v11 is now the supported major version; the previous v10 constraint could not coexist with the supported Laravel versions.
+- Raised the supported Livewire minimums to patched releases `3.8.3` and `4.3.4`.
+- Expanded the CI matrix to PHP 8.5.
 
 ### Fixed
+- Watermark failures occur before `replace` conflict handling, preserving existing media when image processing fails.
+- Server-controlled authorization and upload-policy properties are locked against client-side Livewire mutation.
+- Deferred uploaders with a configured channel now ignore attach events that omit that channel.
 
 ---
 
@@ -49,20 +63,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Corrected README/composer.json copy that said "Livewire v3" despite `^3.0 || ^4.0` already being the supported range.
 
 ---
-
-## [v0.4.0] — 2026-07-15
-
-### Added
-- **`NameConflictStrategy` Enum**: Introduced a strongly-typed Enum for handling name conflicts (`RENAME`, `REPLACE`, `SKIP`, `ALLOW`), replacing raw string checks.
-- **Custom `ModelResolutionException`**: Replaced generic `abort()` calls with a dedicated exception for clearer debugging when model binding fails.
-
-### Changed
-- **Configurable Namespaces**: The component now resolves models using the `model_namespaces` configuration array instead of hardcoded `App\Models` strings, allowing for better support in modular/domain-driven architectures.
-- **Validation Refactor**: Centralized upload validation into a dedicated `rules()` method, simplifying the `uploadFiles()` logic and improving maintainability.
-
-### Fixed
-- Improved exception handling in test suite to correctly capture and assert custom package exceptions.
-- Resolved potential `MassAssignmentException` issues in tests when instantiating standard User models.
 
 ## [v0.4.0] — 2026-07-15
 
@@ -163,12 +163,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## Upgrade Notes
+- **v0.7.0:** Upgrade Livewire to `3.8.3+` or `4.3.4+` and Spatie Media Library to v11. These minimums guarantee the image API used for watermarking and exclude Livewire releases affected by CVE-2026-81887.
 - To get thumbnail previews, add a `thumb` conversion on your model or adjust the view to your conversion names.
 - For single-file collections (e.g., `avatars`), declare the collection in your model and call `->singleFile()`; the component’s `multiple=false` only affects the input, not backend replacement.
 
 ---
 
-[Unreleased]: https://github.com/codebyray/livewire-media-uploader/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/codebyray/livewire-media-uploader/compare/v0.7.0...HEAD
+[v0.7.0]: https://github.com/codebyray/livewire-media-uploader/compare/v0.6.0...v0.7.0
 [v0.6.0]: https://github.com/codebyray/livewire-media-uploader/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://github.com/codebyray/livewire-media-uploader/releases/tag/v0.5.0
 [v0.4.0]: https://github.com/codebyray/livewire-media-uploader/releases/tag/v0.4.0

@@ -24,9 +24,10 @@
     "prefer-stable": true,
     "require": {
         "php": "^8.2",
-        "livewire/livewire": "^3.0 || ^4.0",
+        "livewire/livewire": "^3.8.3 || ^4.3.4",
         "laravel/framework": "^12.0 || ^13.0",
-        "spatie/laravel-medialibrary": "^10.12 || ^11.0"
+        "spatie/image": "^3.3.2",
+        "spatie/laravel-medialibrary": "^11.0"
     },
     "require-dev": {
         "orchestra/testbench": "^10.0 || ^11.0",

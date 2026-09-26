@@ -8,6 +8,7 @@ use Codebyray\LivewireMediaUploader\Tests\Fixtures\TestPost;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\View\ViewException;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
+use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
 use Livewire\Livewire;
 
 it('renders the component', function () {
@@ -41,6 +42,175 @@ it('uploads a single image and lists it', function () {
     expect($media->getCustomProperty('caption'))->toBe('Cover');
     expect($media->getCustomProperty('description'))->toBe('Hero image');
     expect($media->order_column)->toBe(1);
+});
+
+it('applies the configured watermark to uploaded images', function () {
+    $post = TestPost::create(['title' => 'Hello']);
+    $file = TemporaryUploadedFile::fake()->image('watermarked.png', 100, 100);
+    $watermarkPath = tempnam(sys_get_temp_dir(), 'media-watermark-');
+
+    $watermark = imagecreatetruecolor(10, 10);
+    imagefill($watermark, 0, 0, imagecolorallocate($watermark, 255, 0, 0));
+    imagepng($watermark, $watermarkPath);
+    imagedestroy($watermark);
+
+    config()->set('media-uploader.watermark.path', $watermarkPath);
+
+    Livewire::test(MediaUploader::class, [
+        'for' => $post,
+        'collection' => 'images',
+        'preset' => 'images',
+        'watermark' => true,
+    ])
+        ->set('uploads', [$file])
+        ->call('uploadFiles')
+        ->assertDispatched('media-uploaded');
+
+    $storedImage = imagecreatefrompng($post->getFirstMedia('images')->getPath());
+    $bottomRightPixel = imagecolorsforindex($storedImage, imagecolorat($storedImage, 99, 99));
+
+    expect($bottomRightPixel['red'])->toBeGreaterThan(240)
+        ->and($bottomRightPixel['green'])->toBeLessThan(15)
+        ->and($bottomRightPixel['blue'])->toBeLessThan(15);
+
+    imagedestroy($storedImage);
+    unlink($watermarkPath);
+});
+
+it('leaves uploaded images unchanged when watermarking is disabled', function () {
+    $post = TestPost::create(['title' => 'Hello']);
+    $file = TemporaryUploadedFile::fake()->image('plain.png', 100, 100);
+    $originalHash = hash_file('sha256', $file->getRealPath());
+
+    Livewire::test(MediaUploader::class, [
+        'for' => $post,
+        'collection' => 'images',
+        'preset' => 'images',
+    ])
+        ->set('uploads', [$file])
+        ->call('uploadFiles');
+
+    expect(hash_file('sha256', $post->getFirstMedia('images')->getPath()))->toBe($originalHash);
+});
+
+it('leaves non-image uploads untouched when watermarking is enabled', function () {
+    $post = TestPost::create(['title' => 'Hello']);
+    $file = TemporaryUploadedFile::fake()->create('manual.pdf', 10, 'application/pdf');
+
+    Livewire::test(MediaUploader::class, [
+        'for' => $post,
+        'collection' => 'attachments',
+        'preset' => 'docs',
+        'watermark' => true,
+    ])
+        ->set('uploads', [$file])
+        ->call('uploadFiles')
+        ->assertDispatched('media-uploaded');
+
+    expect($post->getFirstMedia('attachments')->file_name)->toBe('manual.pdf');
+});
+
+it('uses the configured preset size unless the component overrides it', function () {
+    $post = TestPost::create(['title' => 'Hello']);
+    config()->set('media-uploader.presets.images.max_kb', 321);
+
+    Livewire::test(MediaUploader::class, [
+        'for' => $post,
+        'collection' => 'images',
+        'preset' => 'images',
+    ])->assertSet('maxSizeKb', 321);
+
+    Livewire::test(MediaUploader::class, [
+        'for' => $post,
+        'collection' => 'images',
+        'preset' => 'images',
+        'maxSizeKb' => 654,
+    ])->assertSet('maxSizeKb', 654);
+});
+
+it('preserves explicit type and mime restrictions', function () {
+    $post = TestPost::create(['title' => 'Hello']);
+
+    Livewire::test(MediaUploader::class, [
+        'for' => $post,
+        'collection' => 'images',
+        'preset' => 'images',
+        'allowedTypes' => ['png'],
+        'allowedMimes' => ['image/png'],
+    ])
+        ->assertSet('allowedTypes', ['png'])
+        ->assertSet('allowedMimes', ['image/png']);
+});
+
+it('preserves existing media when watermarking fails during replacement', function () {
+    $post = TestPost::create(['title' => 'Hello']);
+    $original = TemporaryUploadedFile::fake()->image('replace.png', 50, 50);
+
+    Livewire::test(MediaUploader::class, [
+        'for' => $post,
+        'collection' => 'images',
+        'preset' => 'images',
+    ])
+        ->set('uploads', [$original])
+        ->call('uploadFiles');
+
+    $existingMediaId = $post->getFirstMedia('images')->id;
+    $replacement = TemporaryUploadedFile::fake()->image('replace.png', 60, 60);
+
+    expect(fn () => Livewire::test(MediaUploader::class, [
+        'for' => $post,
+        'collection' => 'images',
+        'preset' => 'images',
+        'watermark' => true,
+        'onNameConflict' => 'replace',
+    ])
+        ->set('uploads', [$replacement])
+        ->call('uploadFiles'))
+        ->toThrow(RuntimeException::class, 'Configure media-uploader.watermark.path');
+
+    expect($post->fresh()->getMedia('images'))
+        ->toHaveCount(1)
+        ->and($post->getFirstMedia('images')->id)->toBe($existingMediaId);
+});
+
+it('honors the global watermark default and per-uploader override', function () {
+    $post = TestPost::create(['title' => 'Hello']);
+    config()->set('media-uploader.watermark.enabled', true);
+
+    Livewire::test(MediaUploader::class, [
+        'for' => $post,
+    ])->assertSet('watermark', true);
+
+    Livewire::test(MediaUploader::class, [
+        'for' => $post,
+        'watermark' => false,
+    ])->assertSet('watermark', false);
+});
+
+it('stages uploads from streams without requiring a local source path', function () {
+    $remoteFile = new class
+    {
+        public function readStream()
+        {
+            $stream = fopen('php://temp', 'w+b');
+            fwrite($stream, 'remote-file-contents');
+            rewind($stream);
+
+            return $stream;
+        }
+
+        public function getRealPath(): string
+        {
+            throw new RuntimeException('A remote temporary upload has no local path.');
+        }
+    };
+
+    $preparedPath = (new TestableMediaUploader)->prepareUploadedFileForTest($remoteFile, 'remote.txt');
+
+    expect(pathinfo($preparedPath, PATHINFO_EXTENSION))->toBe('txt')
+        ->and(file_get_contents($preparedPath))->toBe('remote-file-contents');
+
+    unlink($preparedPath);
 });
 
 it('renames on name conflict by default', function () {
@@ -262,10 +432,10 @@ it('reorders attached media via drag-and-drop', function () {
         ->all();
 
     expect($order)->toBe([
-                             'c.jpg',
-                             'a.jpg',
-                             'b.jpg',
-                         ]);
+        'c.jpg',
+        'a.jpg',
+        'b.jpg',
+    ]);
 });
 
 it('ignores reorderItems for media outside the resolved collection', function () {
@@ -323,6 +493,28 @@ it('reorders the pending upload queue before files are uploaded', function () {
         ->assertSet('pendingMeta.2.order', 3);
 });
 
+it('requires the configured channel when attaching deferred uploads', function () {
+    $post = TestPost::create(['title' => 'Hello']);
+    $file = TemporaryUploadedFile::fake()->image('queued.jpg', 20, 20);
+
+    $component = Livewire::test(MediaUploader::class, [
+        'model' => TestPost::class,
+        'collection' => 'images',
+        'preset' => 'images',
+        'channel' => 'post-gallery',
+    ])->set('uploads', [$file]);
+
+    $component->call('attachTo', TestPost::class, $post->id, 'images');
+
+    expect($post->fresh()->getMedia('images'))->toHaveCount(0);
+
+    $component
+        ->call('attachTo', TestPost::class, $post->id, 'images', null, 'post-gallery')
+        ->assertDispatched('media-attached');
+
+    expect($post->fresh()->getMedia('images'))->toHaveCount(1);
+});
+
 it('throws ModelResolutionException if model is not saved', function () {
     $post = new TestPost(['title' => 'Unsaved Post']);
 
@@ -371,6 +563,16 @@ it('blocks mutating actions when authorizeAbility fails', function () {
     expect($post->getMedia('images'))->toHaveCount(0);
 });
 
+it('prevents clients from removing the configured authorization ability', function () {
+    $post = TestPost::create(['title' => 'Hello']);
+
+    expect(fn () => Livewire::test(MediaUploader::class, [
+        'for' => $post,
+        'authorizeAbility' => 'update',
+    ])->set('authorizeAbility', null))
+        ->toThrow(CannotUpdateLockedPropertyException::class);
+});
+
 it('can move attached media to the end of the collection', function () {
     $post = TestPost::create(['title' => 'Hello']);
 
@@ -410,8 +612,8 @@ it('can move attached media to the end of the collection', function () {
         ->all();
 
     expect($order)->toBe([
-                             'b.jpg',
-                             'c.jpg',
-                             'a.jpg',
-                         ]);
+        'b.jpg',
+        'c.jpg',
+        'a.jpg',
+    ]);
 });
