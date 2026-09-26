@@ -4,7 +4,7 @@
 
 [![tests](https://github.com/codebyray/livewire-media-uploader/actions/workflows/tests.yml/badge.svg)](https://github.com/codebyray/livewire-media-uploader/actions/workflows/tests.yml)
 
-Livewire Media Uploader is a reusable Livewire v3/v4 component that integrates seamlessly with Spatie Laravel Media Library. It ships a clean Tailwind Blade view by default (fully publishable), Bootstrap theme as an option, Alpine overlays for previews/confirmations, drag-and-drop uploads, per-file metadata (caption/description/order), configurable presets, name-conflict strategies, and optional SHA-256 duplicate detection. Drop it in, point it at a model, and you’re shipping in minutes.
+Livewire Media Uploader is a reusable Livewire v3/v4 component that integrates seamlessly with Spatie Laravel Media Library. It ships a clean Tailwind Blade view by default (fully publishable), Bootstrap theme as an option, Alpine overlays for previews/confirmations, drag-and-drop uploads, per-file metadata (caption/description/order), configurable presets, image watermarking, name-conflict strategies, and optional SHA-256 duplicate detection. Drop it in, point it at a model, and you’re shipping in minutes.
 
 ---
 
@@ -21,6 +21,7 @@ Livewire Media Uploader is a reusable Livewire v3/v4 component that integrates s
 - [Usage Examples](#usage-examples)
     - [Create flow (deferred uploads)](#create-flow-deferred-uploads)
 - [Configuration](#configuration)
+- [Watermarking](#watermarking)
 - [Props](#props)
 - [Events](#events)
 - [Authorization](#authorization)
@@ -45,6 +46,7 @@ Livewire Media Uploader is a reusable Livewire v3/v4 component that integrates s
 - ✅ Drag-to-reorder attached media (`order_column`)
 - ✅ Name-conflict strategies: **rename | replace | skip | allow**
 - ✅ Optional **exact duplicate** detection via SHA-256
+- ✅ Optional server-side **image watermarking** with configurable placement, size, padding, and opacity
 - ✅ Collection → preset mapping (auto `accept` attribute)
 - ✅ Image preview **overlay** + delete confirmation **modal**
 - ✅ Optional **authorization hook** (`authorizeAbility`) — delegates to your app's own Gate/Policy, no auth package required
@@ -60,8 +62,9 @@ Livewire Media Uploader is a reusable Livewire v3/v4 component that integrates s
 
 - PHP **8.2+**
 - Laravel **^12.0 | ^13.0**
-- Livewire **^3.0 | ^4.0**
-- spatie/laravel-medialibrary **^10.12 | ^11.0**
+- Livewire **^3.8.3 | ^4.3.4**
+- spatie/laravel-medialibrary **^11.0**
+- spatie/image **^3.3.2**
 - TailwindCSS (optional but recommended for the default view)
 - Alpine.js (used by overlays/progress; see [Overlays & UX Notes](#overlays--ux-notes))
 - CSS depending on theme:
@@ -177,6 +180,10 @@ MEDIA_MAXKB_VIDEOS=102400
 MEDIA_TYPES_DEFAULT=jpg,jpeg,png,webp,avif,gif,pdf,doc,docx,xls,xlsx,ppt,pptx,txt
 MEDIA_MIMES_DEFAULT=image/jpeg,image/png,image/webp,image/avif,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain
 MEDIA_MAXKB_DEFAULT=10240
+
+# Image watermarking
+MEDIA_UPLOADER_WATERMARK_ENABLED=false
+MEDIA_UPLOADER_WATERMARK_PATH=/absolute/path/to/watermark.png
 ```
 
 ### Notes
@@ -341,6 +348,20 @@ MEDIA_MAXKB_DEFAULT=10240
         :maxSizeKb="5120"
     />
     ```
+
+11) Watermark image uploads
+
+    ```html
+    <livewire:media-uploader
+        :for="$post"
+        collection="images"
+        preset="images"
+        :watermark="true"
+    />
+    ```
+
+    See [Watermarking](#watermarking) for setup, every available option, and processing behavior.
+
 ### Create flow (deferred uploads)
 
 You can let users pick files **before** the model exists, and attach them **after** save.
@@ -414,24 +435,75 @@ class PostCreate extends Component
 
 ## Configuration
 
-The package merges `config/media-uploader.php`:
+Publish the package configuration before customizing global behavior:
 
-- `accept_from_config` — if `true`, auto-fills `<input accept>` from the selected preset
-- `collections` — map collection name → preset key
-- `presets.*.types` — extensions (comma-separated)
-- `presets.*.mimes` — MIME types (comma-separated)
-- `presets.*.max_kb` — max file size per file in KB
+```bash
+php artisan vendor:publish --tag=media-uploader-config
+```
 
-Example:
+The published file is `config/media-uploader.php`. Laravel automatically merges the package defaults when the file has not been published.
+
+### Configuration reference
+
+| Key | Default | Purpose |
+|---|---|---|
+| `model_namespaces` | `['App\\Models']` | Namespaces searched when resolving short or dotted model names. They are checked in array order. |
+| `theme` | `tailwind` | Default theme key. It must exist in the `themes` map. Set it with `MEDIA_UPLOADER_THEME` or override it using the component's `theme` prop. |
+| `themes` | Tailwind and Bootstrap views | Maps theme keys to fully qualified Blade view names. Add published custom themes here. |
+| `accept_from_config` | `true` | Builds the file input's `accept` attribute from the active preset's MIME types and extensions. This is a browser hint; server validation still runs independently. |
+| `watermark` | Disabled | Controls image watermark processing. See [Watermarking](#watermarking). |
+| `collections` | Common collection mappings | Maps a Media Library collection name to a validation preset. |
+| `presets` | `images`, `docs`, `videos`, `default` | Defines reusable upload validation and file-picker rules. |
+
+### Collection and preset resolution
+
+Collections and presets are separate concepts. `collection="avatars"` selects the Spatie Media Library collection, while the collection map selects which validation preset applies:
+
 ```php
 'collections' => [
-    'avatars'     => 'images',
-    'images'      => 'images',
+    'avatars' => 'images',
+    'images' => 'images',
     'attachments' => 'docs',
 ],
 ```
-Show all collections together (grouped)
-Set `:list-all="true"` to render a grouped list of **every collection** on the target model. Items stay fully editable.
+
+For `collection="avatars"`, the component uses the `images` preset unless the component receives an explicit `preset` prop.
+
+The active preset is resolved in this order:
+
+1. The component's explicit `preset` prop.
+2. The preset mapped from the active collection in `collections`.
+3. The `default` preset.
+
+Each preset supports:
+
+| Key | Meaning |
+|---|---|
+| `types` | Comma-separated filename extensions. These are used for validation and, when enabled, the input's `accept` attribute. |
+| `mimes` | Comma-separated MIME types used for server-side validation and the generated `accept` attribute. |
+| `max_kb` | Maximum size of each uploaded file in kilobytes. PHP, the web server, and Livewire upload limits must also allow this size. |
+
+You can add your own preset and map any collection to it:
+
+```php
+'collections' => [
+    'press-kits' => 'archives',
+],
+
+'presets' => [
+    'archives' => [
+        'types' => 'zip',
+        'mimes' => 'application/zip',
+        'max_kb' => 51200,
+    ],
+],
+```
+
+The built-in preset values can be overridden through the environment variables listed in [Environment variables](#environment-variables-optional). After changing configuration in a cached production application, run `php artisan config:clear` or rebuild the configuration cache.
+
+### Showing every collection
+
+Set `:list-all="true"` to render a grouped list of every collection on the target model. Items remain editable, and ordering stays scoped to each collection.
 
 ```html
 <livewire:media-uploader
@@ -440,10 +512,96 @@ Set `:list-all="true"` to render a grouped list of **every collection** on the t
     :showList="true"
 />
 ```
-The component decides the active preset in this order:
-1. Explicit `$preset` prop
-2. Mapping from `collections`
-3. Fallback to `default`
+
+## Watermarking
+
+Watermarking is disabled by default. When enabled, the uploader composites a server-side image over each uploaded image before passing the file to Spatie Media Library. The stored original and any Media Library conversions generated from it therefore contain the watermark. Documents, videos, and other non-image uploads are not changed.
+
+### Configure the watermark
+
+Publish `config/media-uploader.php`, place a watermark image somewhere readable by PHP, and configure the complete `watermark` section:
+
+```php
+'watermark' => [
+    'enabled' => (bool) env('MEDIA_UPLOADER_WATERMARK_ENABLED', false),
+    'path' => env(
+        'MEDIA_UPLOADER_WATERMARK_PATH',
+        public_path('images/watermark.png'),
+    ),
+    'position' => 'bottom-right',
+    'padding_x' => 24,
+    'padding_y' => 24,
+    'padding_unit' => 'pixel',
+    'width' => 20,
+    'width_unit' => 'percent',
+    'height' => 0,
+    'height_unit' => 'pixel',
+    'fit' => 'contain',
+    'opacity' => 70,
+],
+```
+
+A transparent PNG is usually the best watermark source. `path` must resolve to a readable local file; it is not a URL or a filesystem-disk key.
+
+### Watermark options
+
+| Key | Accepted values | Description |
+|---|---|---|
+| `enabled` | `true` or `false` | Global default. An uploader's `watermark` prop can override it. |
+| `path` | Readable local path | Source watermark image. An enabled image upload fails with a clear exception when this is missing or unreadable. |
+| `position` | `top-left`, `top`, `top-right`, `left`, `center`, `right`, `bottom-left`, `bottom`, `bottom-right` | Alignment of the watermark within the uploaded image. |
+| `padding_x` | Integer | Horizontal distance from the aligned edge. |
+| `padding_y` | Integer | Vertical distance from the aligned edge. |
+| `padding_unit` | `pixel` or `percent` | Unit shared by `padding_x` and `padding_y`. Percentage padding is relative to the uploaded image dimensions. |
+| `width` | Integer | Desired watermark width. Set to `0` to derive it from `height`. |
+| `width_unit` | `pixel` or `percent` | Unit for `width`. The default `20` percent makes the watermark responsive to source-image width. |
+| `height` | Integer | Desired watermark height. Set to `0` to preserve the watermark's aspect ratio from its configured width. |
+| `height_unit` | `pixel` or `percent` | Unit for `height`. |
+| `fit` | `contain`, `max`, `fill`, `fill-max`, `stretch`, or `crop` | Resize behavior when both width and height are set. With the default `height` of `0`, the original aspect ratio is preserved. |
+| `opacity` | Integer from `0` to `100` | Watermark opacity, where `0` is invisible and `100` is fully opaque. |
+
+### Enable it globally or per uploader
+
+To watermark every image handled by the package, set the global configuration:
+
+```dotenv
+MEDIA_UPLOADER_WATERMARK_ENABLED=true
+MEDIA_UPLOADER_WATERMARK_PATH=/var/www/example.com/public/images/watermark.png
+```
+
+To enable it only for selected uploaders, leave the global setting disabled and pass `:watermark="true"`:
+
+```html
+<livewire:media-uploader
+    :for="$post"
+    collection="images"
+    preset="images"
+    :watermark="true"
+/>
+```
+
+To disable it for one uploader when the global setting is enabled, pass `:watermark="false"`:
+
+```html
+<livewire:media-uploader
+    :for="$post"
+    collection="private-images"
+    preset="images"
+    :watermark="false"
+/>
+```
+
+The prop is optional. When omitted, the uploader uses `watermark.enabled` from configuration. The prop only controls whether processing runs; the path and rendering options remain server-controlled in the configuration file.
+
+### Processing behavior and requirements
+
+- Validation and exact-duplicate detection run before watermark processing.
+- Name-conflict handling and Media Library storage run after the watermark is successfully applied, so a watermark error does not delete an existing file during the `replace` strategy.
+- Multiple image uploads are processed individually.
+- Deferred create-form uploads are watermarked when the queued files are attached to the saved model.
+- Processing happens on Livewire's local temporary upload before the selected Media Library disk receives the file, including when the destination disk is remote.
+- The package uses the image driver configured by Spatie Media Library in `media-library.image_driver`. That driver must support both the uploaded format and the watermark format.
+- The uploader never modifies the file on the user's computer; only the server-side temporary upload and stored copy are changed.
 
 ---
 
@@ -459,15 +617,18 @@ The component decides the active preset in this order:
 | `multiple` | `bool` | `true` | Allow selecting multiple files. The target Spatie collection must not use `singleFile()` if multiple files should be retained. |
 | `accept` | `?string` | `null` | `<input accept>` override (otherwise may be auto from config). |
 | `showList` | `bool` | `true` | Show the attached media list. |
-| `maxSizeKb` | `int` | `500` (overridden to preset’s `max_kb` if empty) | Max file size (KB). |
+| `theme` | `?string` | Configured theme | Override the globally configured theme for this uploader. |
+| `maxSizeKb` | `?int` | Active preset's `max_kb` | Max file size (KB). An explicit value overrides the preset. |
 | `preset` | `?string` | `null` | Choose a preset (`images`, `docs`, `videos`, `default`, etc.). |
 | `allowedTypes` | `array` | `[]` | Extensions filter (e.g. `['jpg','png']`). |
 | `allowedMimes` | `array` | `[]` | MIME filter (e.g. `['image/jpeg']`). |
 | `onNameConflict` | `string` | `rename` | Strategy: `rename` \| `replace` \| `skip` \| `allow`. |
 | `skipExactDuplicates` | `bool` | `false` | Uses SHA-256 stored in `custom_properties->sha256`. |
+| `watermark` | `?bool` | Config value | Enable or disable watermarking for this uploader instance. |
 | `namespaces` | `array` | `['App\\Models']` | Namespaces for dotted-path resolution. |
 | `aliases` | `array` | `[]` | Local alias map, e.g. `['profile' => \App\Models\User::class]`. |
 | `attachedFilesTitle` | `string` | `"Current gallery"` | Heading text in the list card. |
+| `channel` | `?string` | `null` | Route deferred `media:attach` events to a specific uploader. When set, the incoming event must contain the same channel. |
 | `listAll` | `bool` | `false` | When `true`, the attached media list shows **all collections**, grouped by collection name (still editable). |
 | `authorizeAbility` | `?string` | `null` | Gate/Policy ability checked against the target model before upload/delete/edit/attach. See [Authorization](#authorization). |
 
@@ -477,8 +638,8 @@ The component decides the active preset in this order:
 
 The component dispatches browser events you can listen for:
 
-- `media:attach` — **incoming** event the component listens for. Arguments: `model` (class/alias), `id`, optional `collection`, optional `disk`. Triggers attaching of any queued files to the now-saved target.
-- `media-attached` — emitted after a successful `media:attach`. Payload: `{ model: FQCN, id: string }`.
+- `media:attach` — **incoming** event the component listens for. Arguments: `model` (class/alias), `id`, optional `collection`, optional `disk`, and optional `channel`. When the uploader has a channel, the event must provide the same value. Triggers attaching queued files to the saved target.
+- `media-attached` — emitted after a successful `media:attach`. Payload: `{ model: FQCN, id: string, channel: ?string }`.
 - `media-uploaded` — emitted after an immediate upload (when a target already exists).
 - `media-deleted` — emitted after deletion (`detail.id` contains the Media ID).
 - `media-meta-updated` — emitted after inline metadata is saved.
@@ -515,7 +676,7 @@ With the example above, before any upload/delete/edit/attach action runs, the co
 
 **Notes:**
 - One ability is checked for all mutating actions. If you need `delete` and `update` to map to different Policy methods, don't set `authorizeAbility` — instead wrap the component's Blade usage behind your own check, or open an issue/PR describing the use case.
-- The `channel` prop used with the `media:attach` event is a namespacing convenience for routing the event to the right component instance — it is **not** an authorization boundary. Use `authorizeAbility` (or your own upstream checks) if untrusted input could influence which `model`/`id` gets dispatched to `media:attach`.
+- The `channel` prop routes `media:attach` events to the intended component instance. A configured channel must match exactly, but it is **not** an authorization boundary. Use `authorizeAbility` (or your own upstream checks) if untrusted input could influence which `model`/`id` gets dispatched.
 - Leaving `authorizeAbility` unset preserves the exact behavior of versions prior to `0.5.0` — this is a fully backward-compatible, opt-in addition.
 
 ---
@@ -569,6 +730,10 @@ With the example above, before any upload/delete/edit/attach action runs, the co
 
 - **No thumbnails**  
   Add a `thumb` conversion (see [Model Setup](#model-setup-spatie-media-library)).
+
+- **Watermark path is missing or unreadable:** Set `MEDIA_UPLOADER_WATERMARK_PATH` to an absolute readable image path, or configure `watermark.path` in the published config. Clear or rebuild Laravel's config cache afterward.
+
+- **A watermarked format fails to process:** Confirm that the driver selected by `media-library.image_driver` supports both the uploaded format and the watermark format. GD is available in the package's CI matrix; Imagick or Vips support depends on the consuming application.
 
 ---
 

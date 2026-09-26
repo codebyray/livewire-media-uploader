@@ -10,10 +10,11 @@ use Codebyray\LivewireMediaUploader\Livewire\MediaUploader;
  */
 class TestableMediaUploader extends MediaUploader
 {
-    /**
-     * @param mixed $file
-     * @return string|null
-     */
+    public function prepareUploadedFileForTest(mixed $file, string $originalName): string
+    {
+        return $this->prepareUploadedFile($file, $originalName);
+    }
+
     protected function fileSha256(mixed $file): ?string
     {
         return 'TEST-HASH-0001';

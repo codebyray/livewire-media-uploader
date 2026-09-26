@@ -15,6 +15,11 @@ use Livewire\Attributes\On;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\WithFileUploads;
+use RuntimeException;
+use Spatie\Image\Enums\AlignPosition;
+use Spatie\Image\Enums\Fit;
+use Spatie\Image\Enums\Unit;
+use Spatie\Image\Image;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
@@ -22,31 +27,69 @@ class MediaUploader extends Component
 {
     use WithFileUploads;
 
-    public array   $namespaces          = [];
-    public array   $aliases             = [];
-    public ?string $collection          = 'images';
-    public ?string $disk                = null;
-    public bool    $multiple            = true;
-    public ?string $accept              = null;
-    public bool    $showList            = true;
-    public int     $maxSizeKb           = 500;
-    public array   $uploads             = [];
-    public array   $selected            = [];
-    public array   $items               = [];
-    public string  $onNameConflict      = 'rename';
-    public bool    $skipExactDuplicates = false;
-    public ?string $preset              = null;
-    public array   $allowedTypes        = [];
-    public array   $allowedMimes        = [];
-    public string  $attachedFilesTitle  = 'Current gallery';
-    public array   $editing             = [];
-    public array   $pendingMeta         = [];
-    public ?int    $confirmingDeleteId  = null;
-    public string  $allowedLabel        = '';
-    public ?string $theme               = null;
-    public ?string $pendingModelClass   = null;
-    public ?string $channel             = null;
-    public bool    $listAll             = false;
+    #[Locked]
+    public array $namespaces = [];
+
+    #[Locked]
+    public array $aliases = [];
+
+    #[Locked]
+    public ?string $collection = 'images';
+
+    #[Locked]
+    public ?string $disk = null;
+
+    public bool $multiple = true;
+
+    public ?string $accept = null;
+
+    public bool $showList = true;
+
+    #[Locked]
+    public ?int $maxSizeKb = null;
+
+    public array $uploads = [];
+
+    public array $selected = [];
+
+    public array $items = [];
+
+    #[Locked]
+    public string $onNameConflict = 'rename';
+
+    #[Locked]
+    public bool $skipExactDuplicates = false;
+
+    #[Locked]
+    public ?string $preset = null;
+
+    #[Locked]
+    public array $allowedTypes = [];
+
+    #[Locked]
+    public array $allowedMimes = [];
+
+    public string $attachedFilesTitle = 'Current gallery';
+
+    public array $editing = [];
+
+    public array $pendingMeta = [];
+
+    public ?int $confirmingDeleteId = null;
+
+    public string $allowedLabel = '';
+
+    public ?string $theme = null;
+
+    public ?string $pendingModelClass = null;
+
+    #[Locked]
+    public ?string $channel = null;
+
+    public bool $listAll = false;
+
+    #[Locked]
+    public bool $watermark = false;
 
     /**
      * Optional Gate/Policy ability name checked against the resolved target
@@ -56,8 +99,10 @@ class MediaUploader extends Component
      *
      * Example: :authorizeAbility="'update'"  (checks $post->can('update'))
      */
-    public ?string $authorizeAbility    = null;
-    public array   $groups              = [];
+    #[Locked]
+    public ?string $authorizeAbility = null;
+
+    public array $groups = [];
 
     #[Locked]
     public ?string $resolvedModelClass = null;
@@ -74,13 +119,14 @@ class MediaUploader extends Component
         bool $multiple = true,
         ?string $accept = null,
         bool $showList = true,
-        int $maxSizeKb = 10240,
+        ?int $maxSizeKb = null,
         ?array $namespaces = null,
         ?array $aliases = null,
         string $attachedFilesTitle = 'Attached media',
         ?string $channel = null,
         bool $listAll = false,
         ?string $authorizeAbility = null,
+        ?bool $watermark = null,
     ): void {
         // Load namespaces from config
         $this->namespaces = $namespaces ?? config('media-uploader.model_namespaces', ['App\\Models']);
@@ -96,6 +142,7 @@ class MediaUploader extends Component
         $this->maxSizeKb = $maxSizeKb;
         $this->attachedFilesTitle = $attachedFilesTitle;
         $this->listAll = $listAll;
+        $this->watermark = $watermark ?? (bool) config('media-uploader.watermark.enabled', false);
 
         $this->loadPresetFromConfig();
 
@@ -151,9 +198,9 @@ class MediaUploader extends Component
         }
 
         return [
-                'uploads' => ['required', 'array'],
-                'uploads.*' => $perFileRules,
-            ] + $this->queueMetaRules();
+            'uploads' => ['required', 'array'],
+            'uploads.*' => $perFileRules,
+        ] + $this->queueMetaRules();
     }
 
     protected function queueMetaRules(): array
@@ -202,11 +249,16 @@ class MediaUploader extends Component
     {
         $presetKey = $this->preset ?? config('media-uploader.collections.'.($this->collection ?? 'default')) ?? 'default';
         $cfg = (array) config("media-uploader.presets.$presetKey", []);
-        $this->allowedTypes = $this->csvToArray($cfg['types'] ?? '');
-        $this->allowedMimes = $this->csvToArray($cfg['mimes'] ?? '');
+        if (empty($this->allowedTypes)) {
+            $this->allowedTypes = $this->csvToArray($cfg['types'] ?? '');
+        }
 
-        if (empty($this->maxSizeKb) && isset($cfg['max_kb'])) {
-            $this->maxSizeKb = (int) $cfg['max_kb'];
+        if (empty($this->allowedMimes)) {
+            $this->allowedMimes = $this->csvToArray($cfg['mimes'] ?? '');
+        }
+
+        if ($this->maxSizeKb === null) {
+            $this->maxSizeKb = isset($cfg['max_kb']) ? (int) $cfg['max_kb'] : 10240;
         }
 
         if (empty($this->accept) && config('media-uploader.accept_from_config')) {
@@ -347,52 +399,61 @@ class MediaUploader extends Component
 
         foreach ($this->uploads as $i => $file) {
             $originalName = method_exists($file, 'getClientOriginalName') ? $file->getClientOriginalName() : (property_exists($file, 'name') ? $file->name : 'file');
+            $preparedPath = $this->prepareUploadedFile($file, $originalName);
 
-            $hash = $this->skipExactDuplicates ? $this->fileSha256($file) : null;
-            if ($this->skipExactDuplicates && $hash) {
-                $existsSameHash = $model->media()->where('collection_name', $collection)->where('custom_properties->sha256', $hash)->first();
-                if ($existsSameHash) {
-                    $skipped++;
+            try {
+                $hash = $this->skipExactDuplicates ? $this->fileSha256($preparedPath) : null;
+                if ($this->skipExactDuplicates && $hash) {
+                    $existsSameHash = $model->media()->where('collection_name', $collection)->where('custom_properties->sha256', $hash)->first();
+                    if ($existsSameHash) {
+                        $skipped++;
 
-                    continue;
-                }
-            }
-
-            $targetName = $originalName;
-            if ($strategy !== NameConflictStrategy::ALLOW) {
-                if ($conflict = $this->existingByName($model, $collection, $targetName)) {
-                    switch ($strategy) {
-                        case NameConflictStrategy::REPLACE:
-                            $conflict->delete();
-                            $replaced++;
-                            break;
-                        case NameConflictStrategy::SKIP:
-                            $skipped++;
-
-                            continue 2;
-                        case NameConflictStrategy::RENAME:
-                            $targetName = $this->uniqueFileName($model, $collection, $originalName);
-                            $renamed++;
-                            break;
+                        continue;
                     }
                 }
-            }
 
-            $adder = $model->addMedia($file)->usingFileName($targetName);
-            if ($hash) {
-                $adder->withCustomProperties(['sha256' => $hash]);
-            }
+                $this->applyWatermark($preparedPath, $file);
 
-            $media = $this->disk ? $adder->toMediaCollection($collection, $this->disk) : $adder->toMediaCollection($collection);
-            $meta = $this->pendingMeta[$i] ?? ['caption' => null, 'description' => null, 'order' => null];
+                $targetName = $originalName;
+                if ($strategy !== NameConflictStrategy::ALLOW) {
+                    if ($conflict = $this->existingByName($model, $collection, $targetName)) {
+                        switch ($strategy) {
+                            case NameConflictStrategy::REPLACE:
+                                $conflict->delete();
+                                $replaced++;
+                                break;
+                            case NameConflictStrategy::SKIP:
+                                $skipped++;
 
-            $media->setCustomProperty('caption', $meta['caption'] ?: null);
-            $media->setCustomProperty('description', $meta['description'] ?: null);
-            if (! empty($meta['order'])) {
-                $media->order_column = (int) $meta['order'];
+                                continue 2;
+                            case NameConflictStrategy::RENAME:
+                                $targetName = $this->uniqueFileName($model, $collection, $originalName);
+                                $renamed++;
+                                break;
+                        }
+                    }
+                }
+
+                $adder = $model->addMedia($preparedPath)->usingFileName($targetName);
+                if ($hash) {
+                    $adder->withCustomProperties(['sha256' => $hash]);
+                }
+
+                $media = $this->disk ? $adder->toMediaCollection($collection, $this->disk) : $adder->toMediaCollection($collection);
+                $meta = $this->pendingMeta[$i] ?? ['caption' => null, 'description' => null, 'order' => null];
+
+                $media->setCustomProperty('caption', $meta['caption'] ?: null);
+                $media->setCustomProperty('description', $meta['description'] ?: null);
+                if (! empty($meta['order'])) {
+                    $media->order_column = (int) $meta['order'];
+                }
+                $media->save();
+                $added++;
+            } finally {
+                if (is_file($preparedPath)) {
+                    @unlink($preparedPath);
+                }
             }
-            $media->save();
-            $added++;
         }
 
         $this->clearQueue();
@@ -423,7 +484,7 @@ class MediaUploader extends Component
     #[On('media:attach')]
     public function attachTo(string $model, int|string $id, ?string $collection = null, ?string $disk = null, ?string $channel = null): void
     {
-        if ($this->channel && $channel && $channel !== $this->channel) {
+        if ($this->channel !== null && $channel !== $this->channel) {
             return;
         }
 
@@ -579,8 +640,8 @@ class MediaUploader extends Component
 
         foreach ($ids as $i => $id) {
             Media::whereKey($id)->update([
-                                             'order_column' => $i + 1,
-                                         ]);
+                'order_column' => $i + 1,
+            ]);
         }
 
         if ($this->showList) {
@@ -588,7 +649,7 @@ class MediaUploader extends Component
         }
 
         $this->dispatch(
-                        'media-reordered',
+            'media-reordered',
             collection: $collectionName
         );
     }
@@ -712,12 +773,108 @@ class MediaUploader extends Component
 
     protected function fileSha256(mixed $file): ?string
     {
-        $path = method_exists($file, 'getRealPath') ? $file->getRealPath() : null;
+        $path = is_string($file) ? $file : (method_exists($file, 'getRealPath') ? $file->getRealPath() : null);
         if (! $path || ! is_file($path)) {
             return null;
         }
 
         return hash_file('sha256', $path);
+    }
+
+    protected function prepareUploadedFile(mixed $file, string $originalName): string
+    {
+        $temporaryPath = tempnam(sys_get_temp_dir(), 'media-uploader-');
+        if ($temporaryPath === false) {
+            throw new RuntimeException('The uploaded file could not be prepared for storage.');
+        }
+
+        $extension = preg_replace('/[^a-z0-9]/i', '', pathinfo($originalName, PATHINFO_EXTENSION)) ?: '';
+        $preparedPath = $extension === '' ? $temporaryPath : $temporaryPath.'.'.strtolower($extension);
+
+        if ($preparedPath !== $temporaryPath && ! rename($temporaryPath, $preparedPath)) {
+            @unlink($temporaryPath);
+
+            throw new RuntimeException('The uploaded file could not be prepared for storage.');
+        }
+
+        $sourceStream = null;
+        $destinationStream = null;
+        $copied = false;
+
+        try {
+            $sourceStream = method_exists($file, 'readStream') ? $file->readStream() : null;
+            if (! is_resource($sourceStream)) {
+                $sourcePath = method_exists($file, 'getRealPath') ? $file->getRealPath() : null;
+                $sourceStream = is_string($sourcePath) ? @fopen($sourcePath, 'rb') : false;
+            }
+
+            $destinationStream = @fopen($preparedPath, 'wb');
+
+            if (! is_resource($sourceStream) || ! is_resource($destinationStream)) {
+                throw new RuntimeException('The uploaded file could not be read from temporary storage.');
+            }
+
+            if (stream_copy_to_stream($sourceStream, $destinationStream) === false) {
+                throw new RuntimeException('The uploaded file could not be copied from temporary storage.');
+            }
+
+            $copied = true;
+        } finally {
+            if (is_resource($sourceStream)) {
+                fclose($sourceStream);
+            }
+            if (is_resource($destinationStream)) {
+                fclose($destinationStream);
+            }
+            if (! $copied) {
+                @unlink($preparedPath);
+            }
+        }
+
+        return $preparedPath;
+    }
+
+    protected function applyWatermark(string $sourcePath, mixed $file): void
+    {
+        if (! $this->watermark || ! $this->isImageLike($file)) {
+            return;
+        }
+
+        if (! is_file($sourcePath) || ! is_writable($sourcePath)) {
+            throw new RuntimeException('The uploaded image cannot be watermarked because its temporary file is not writable.');
+        }
+
+        $watermarkPath = config('media-uploader.watermark.path');
+        if (! is_string($watermarkPath) || ! is_file($watermarkPath) || ! is_readable($watermarkPath)) {
+            throw new RuntimeException('Configure media-uploader.watermark.path with a readable watermark image.');
+        }
+
+        $position = AlignPosition::tryFrom((string) config('media-uploader.watermark.position', 'bottom-right'));
+        $paddingUnit = Unit::tryFrom((string) config('media-uploader.watermark.padding_unit', 'pixel'));
+        $widthUnit = Unit::tryFrom((string) config('media-uploader.watermark.width_unit', 'percent'));
+        $heightUnit = Unit::tryFrom((string) config('media-uploader.watermark.height_unit', 'pixel'));
+        $fit = Fit::tryFrom((string) config('media-uploader.watermark.fit', 'contain'));
+
+        if (! $position || ! $paddingUnit || ! $widthUnit || ! $heightUnit || ! $fit) {
+            throw new RuntimeException('The media uploader watermark configuration contains an invalid option.');
+        }
+
+        Image::useImageDriver((string) (config('media-library.image_driver') ?: 'gd'))
+            ->loadFile($sourcePath)
+            ->watermark(
+                watermarkImage: $watermarkPath,
+                position: $position,
+                paddingX: (int) config('media-uploader.watermark.padding_x', 24),
+                paddingY: (int) config('media-uploader.watermark.padding_y', 24),
+                paddingUnit: $paddingUnit,
+                width: (int) config('media-uploader.watermark.width', 20),
+                widthUnit: $widthUnit,
+                height: (int) config('media-uploader.watermark.height', 0),
+                heightUnit: $heightUnit,
+                fit: $fit,
+                alpha: (int) config('media-uploader.watermark.opacity', 70),
+            )
+            ->save($sourcePath);
     }
 
     protected function existingByName(Model $model, string $collection, string $fileName): ?Media

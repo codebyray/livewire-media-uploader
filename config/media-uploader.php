@@ -87,6 +87,32 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Image Watermark
+    |--------------------------------------------------------------------------
+    | Optionally apply an image watermark to the original uploaded image before
+    | it is stored by Spatie Media Library. The component's `watermark` prop can
+    | override `enabled` for an individual uploader instance.
+    |
+    | The path must point to a readable image on the server. A transparent PNG
+    | is recommended. Width and padding may be expressed in pixels or percent.
+    */
+    'watermark' => [
+        'enabled' => (bool) env('MEDIA_UPLOADER_WATERMARK_ENABLED', false),
+        'path' => env('MEDIA_UPLOADER_WATERMARK_PATH'),
+        'position' => 'bottom-right',
+        'padding_x' => 24,
+        'padding_y' => 24,
+        'padding_unit' => 'pixel',
+        'width' => 20,
+        'width_unit' => 'percent',
+        'height' => 0,
+        'height_unit' => 'pixel',
+        'fit' => 'contain',
+        'opacity' => 70,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Collection → Preset Mapping
     |--------------------------------------------------------------------------
     | Define logical collections (used by your forms/models) and map each one
@@ -128,7 +154,6 @@ return [
             'max_kb' => (int) env('MEDIA_MAXKB_IMAGES', 10240),
         ],
 
-        // ... existing code ...
         /*
         |----------------------------------------------------------------------
         | Documents Preset
