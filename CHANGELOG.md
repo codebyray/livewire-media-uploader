@@ -10,6 +10,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.8.0] — 2026-10-03
+
+### Added
+- Regression coverage for attachment authorization, morph aliases, custom media models, queue ordering, replacement failures, and both supplied themes.
+
+### Security
+- Deferred attachment requires a configured Gate/Policy ability and authorizes the selected record before binding it.
+- Attach events cannot retarget an already-bound uploader, change its deferred model class, or override its configured collection or disk.
+- The expected deferred model class is locked against client-side mutation.
+
+### Fixed
+- Preserve existing media until replacement storage succeeds, including single-file collections and failed destination writes.
+- Save captions, descriptions, duplicate hashes, and ordering with the new media record before replacement cleanup.
+- Resolve media ownership through the target's relationship, supporting morph aliases and custom Media Library models for edits, deletes, and reordering.
+- Append reordered queued uploads after existing media in the active collection instead of resetting their order to one.
+- Preserve the original Media Library display name when staging uploaded files.
+
+### Upgrade Notes
+- Deferred uploaders must now set `authorizeAbility` and provide a policy that permits the current user to manage media on the saved target. Existing-record uploaders may continue to rely on application authorization of their fixed target.
+- Configure `collection` and `disk` on the uploader. Optional attach-event arguments can confirm these settings but can no longer override them. A mismatched collection is ignored; a mismatched disk is rejected with `403`.
+
 ## [v0.7.0] — 2026-09-25
 
 ### Added
@@ -163,13 +184,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## Upgrade Notes
+- **v0.8.0:** Deferred attachment now requires `authorizeAbility` and a matching Gate/Policy. Configure the target model class, collection, and disk on the uploader; attach events can no longer override these settings or retarget an already-bound uploader. See the README's [v0.8.0 upgrade guide](README.md#upgrading-to-v080).
 - **v0.7.0:** Upgrade Livewire to `3.8.3+` or `4.3.4+` and Spatie Media Library to v11. These minimums guarantee the image API used for watermarking and exclude Livewire releases affected by CVE-2026-81887.
 - To get thumbnail previews, add a `thumb` conversion on your model or adjust the view to your conversion names.
 - For single-file collections (e.g., `avatars`), declare the collection in your model and call `->singleFile()`; the component’s `multiple=false` only affects the input, not backend replacement.
 
 ---
 
-[Unreleased]: https://github.com/codebyray/livewire-media-uploader/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/codebyray/livewire-media-uploader/compare/v0.8.0...HEAD
+[v0.8.0]: https://github.com/codebyray/livewire-media-uploader/compare/v0.7.0...v0.8.0
 [v0.7.0]: https://github.com/codebyray/livewire-media-uploader/compare/v0.6.0...v0.7.0
 [v0.6.0]: https://github.com/codebyray/livewire-media-uploader/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://github.com/codebyray/livewire-media-uploader/releases/tag/v0.5.0

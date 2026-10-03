@@ -81,6 +81,7 @@ class MediaUploader extends Component
 
     public ?string $theme = null;
 
+    #[Locked]
     public ?string $pendingModelClass = null;
 
     #[Locked]
@@ -94,8 +95,9 @@ class MediaUploader extends Component
     /**
      * Optional Gate/Policy ability name checked against the resolved target
      * model before any mutating action (upload, delete, edit meta, attach).
-     * Left null by default so existing consumers see no behavior change —
-     * the app is responsible for its own authorization unless this is set.
+     * Optional for a target fixed at mount; the app must authorize access
+     * to that record. Required when a deferred target is supplied by an
+     * attach event, because event parameters are client-controlled.
      *
      * Example: :authorizeAbility="'update'"  (checks $post->can('update'))
      */
@@ -415,12 +417,12 @@ class MediaUploader extends Component
                 $this->applyWatermark($preparedPath, $file);
 
                 $targetName = $originalName;
+                $replacement = null;
                 if ($strategy !== NameConflictStrategy::ALLOW) {
                     if ($conflict = $this->existingByName($model, $collection, $targetName)) {
                         switch ($strategy) {
                             case NameConflictStrategy::REPLACE:
-                                $conflict->delete();
-                                $replaced++;
+                                $replacement = $conflict;
                                 break;
                             case NameConflictStrategy::SKIP:
                                 $skipped++;
@@ -434,20 +436,31 @@ class MediaUploader extends Component
                     }
                 }
 
-                $adder = $model->addMedia($preparedPath)->usingFileName($targetName);
+                $meta = $this->pendingMeta[$i] ?? [];
+                $properties = [
+                    'caption' => ($meta['caption'] ?? null) ?: null,
+                    'description' => ($meta['description'] ?? null) ?: null,
+                ];
                 if ($hash) {
-                    $adder->withCustomProperties(['sha256' => $hash]);
+                    $properties['sha256'] = $hash;
                 }
 
-                $media = $this->disk ? $adder->toMediaCollection($collection, $this->disk) : $adder->toMediaCollection($collection);
-                $meta = $this->pendingMeta[$i] ?? ['caption' => null, 'description' => null, 'order' => null];
-
-                $media->setCustomProperty('caption', $meta['caption'] ?: null);
-                $media->setCustomProperty('description', $meta['description'] ?: null);
+                $adder = $model->addMedia($preparedPath)
+                    ->usingFileName($targetName)
+                    ->usingName(pathinfo($originalName, PATHINFO_FILENAME))
+                    ->withCustomProperties($properties);
                 if (! empty($meta['order'])) {
-                    $media->order_column = (int) $meta['order'];
+                    $adder->withProperties(['order_column' => (int) $meta['order']]);
                 }
-                $media->save();
+
+                $this->disk ? $adder->toMediaCollection($collection, $this->disk) : $adder->toMediaCollection($collection);
+
+                // Spatie may already have removed it for a single-file collection.
+                // Never remove an existing file until the replacement is stored.
+                if ($replacement) {
+                    $replacement->fresh()?->delete();
+                    $replaced++;
+                }
                 $added++;
             } finally {
                 if (is_file($preparedPath)) {
@@ -488,40 +501,50 @@ class MediaUploader extends Component
             return;
         }
 
-        $fqcn = $this->resolveModelClass($model);
-        if (! in_array(HasMedia::class, class_implements($fqcn), true)) {
-            throw new ModelResolutionException(class_basename($fqcn).' must implement Spatie\\MediaLibrary\\HasMedia.');
+        // Attach events are broadcast and may belong to another collection.
+        if ($collection !== null && $collection !== $this->collection) {
+            return;
         }
+
+        abort_if($disk !== null && $disk !== $this->disk, 403, 'An attach event cannot change the configured storage disk.');
+
+        $fqcn = $this->resolveModelClass($model);
+        if ($this->hasTarget()) {
+            abort_unless(
+                $fqcn === $this->resolvedModelClass && (string) $id === (string) $this->resolvedModelId,
+                403,
+                'An attached uploader cannot change its target model.',
+            );
+        } else {
+            abort_unless($fqcn === $this->pendingModelClass, 403, 'The target must match the configured deferred model class.');
+            abort_if($this->authorizeAbility === null, 403, 'Configure authorizeAbility before attaching deferred uploads.');
+        }
+
         $attachTarget = $fqcn::findOrFail($id);
         $this->authorizeAction($attachTarget);
 
         $this->resolvedModelClass = $fqcn;
         $this->resolvedModelId = (string) $id;
 
-        $origCollection = $this->collection;
-        $origDisk = $this->disk;
-        if ($collection) {
-            $this->collection = $collection;
-        }
-        if ($disk) {
-            $this->disk = $disk;
-        }
-
         if (! empty($this->uploads)) {
             $this->uploadFiles();
         }
 
-        $this->collection = $origCollection;
-        $this->disk = $origDisk;
         $this->dispatch('media-attached', model: $fqcn, id: (string) $id, channel: $channel);
+    }
+
+    protected function ownedMedia(int $mediaId): Media
+    {
+        $media = $this->target()?->media()->find($mediaId);
+        abort_unless($media, 403, 'This media does not belong to the specified model.');
+
+        return $media;
     }
 
     public function remove(int $mediaId): void
     {
-        $media = Media::findOrFail($mediaId);
-        $belongs = $media->model_type === $this->resolvedModelClass && (string) $media->model_id === (string) $this->resolvedModelId;
-        abort_unless($belongs, 403, 'This media does not belong to the specified model.');
         $this->authorizeAction();
+        $media = $this->ownedMedia($mediaId);
         $media->delete();
         if ($this->showList) {
             $this->loadItems();
@@ -639,7 +662,7 @@ class MediaUploader extends Component
         array_splice($ids, $targetPos, 0, [$draggedId]);
 
         foreach ($ids as $i => $id) {
-            Media::whereKey($id)->update([
+            $model->media()->whereKey($id)->update([
                 'order_column' => $i + 1,
             ]);
         }
@@ -698,6 +721,7 @@ class MediaUploader extends Component
 
         $newUploads = [];
         $newPendingMeta = [];
+        $baseOrder = $this->hasTarget() ? $this->nextOrder() : 1;
 
         foreach ($keys as $i => $key) {
             $newUploads[$i] = $this->uploads[$key];
@@ -708,7 +732,7 @@ class MediaUploader extends Component
                 'order' => null,
             ];
 
-            $meta['order'] = $i + 1;
+            $meta['order'] = $baseOrder + $i;
 
             $newPendingMeta[$i] = $meta;
         }
@@ -735,10 +759,8 @@ class MediaUploader extends Component
     public function saveEdit(int $mediaId): void
     {
         $this->validate($this->metaRules($mediaId));
-        $media = Media::findOrFail($mediaId);
-        $belongs = $media->model_type === $this->resolvedModelClass && (string) $media->model_id === (string) $this->resolvedModelId;
-        abort_unless($belongs, 403, 'This media does not belong to the specified model.');
         $this->authorizeAction();
+        $media = $this->ownedMedia($mediaId);
 
         $meta = $this->editing[$mediaId] ?? ['caption' => null, 'description' => null, 'order' => null];
         $media->setCustomProperty('caption', $meta['caption'] ?: null);

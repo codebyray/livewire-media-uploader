@@ -6,6 +6,8 @@
 
 Livewire Media Uploader is a reusable Livewire v3/v4 component that integrates seamlessly with Spatie Laravel Media Library. It ships a clean Tailwind Blade view by default (fully publishable), Bootstrap theme as an option, Alpine overlays for previews/confirmations, drag-and-drop uploads, per-file metadata (caption/description/order), configurable presets, image watermarking, name-conflict strategies, and optional SHA-256 duplicate detection. Drop it in, point it at a model, and you’re shipping in minutes.
 
+Upgrading from `v0.7.x`? Read [Upgrading to v0.8.0](#upgrading-to-v080) before deploying, especially if you use deferred uploads on create forms.
+
 ---
 
 ## Table of Contents
@@ -13,6 +15,7 @@ Livewire Media Uploader is a reusable Livewire v3/v4 component that integrates s
 - [Features](#features)
 - [Requirements](#requirements)
 - [Installation](#installation)
+- [Upgrading to v0.8.0](#upgrading-to-v080)
 - [Publishing Assets](#publishing-assets)
 - [Theme System](#theme-system-tailwind--bootstrap--custom)
     - [Dark Mode - Tailwind](#dark-mode-tailwind-theme)
@@ -49,7 +52,7 @@ Livewire Media Uploader is a reusable Livewire v3/v4 component that integrates s
 - ✅ Optional server-side **image watermarking** with configurable placement, size, padding, and opacity
 - ✅ Collection → preset mapping (auto `accept` attribute)
 - ✅ Image preview **overlay** + delete confirmation **modal**
-- ✅ Optional **authorization hook** (`authorizeAbility`) — delegates to your app's own Gate/Policy, no auth package required
+- ✅ **Authorization hook** (`authorizeAbility`) — required for deferred attachment, optional for a saved target fixed at mount; delegates to your app's Gate/Policy
 - ✅ Works with:
     - Saved model instance (`:for="$model"`)
     - String model + id (`model="user" :id="1"`)
@@ -60,7 +63,7 @@ Livewire Media Uploader is a reusable Livewire v3/v4 component that integrates s
 
 ## Requirements
 
-- PHP **8.2+**
+- PHP **8.2+** (Laravel 13 requires **8.3+**)
 - Laravel **^12.0 | ^13.0**
 - Livewire **^3.8.3 | ^4.3.4**
 - spatie/laravel-medialibrary **^11.0**
@@ -73,7 +76,7 @@ Livewire Media Uploader is a reusable Livewire v3/v4 component that integrates s
 
 > **Note on Laravel 10/11:** Earlier releases of this package listed Laravel 10 and 11 as supported. Both are now past their security-support window (Laravel 10 is EOL; Laravel 11 security support ended March 2026), and current releases of `laravel/framework` in those lines carry known, unpatched advisories — meaning a fresh `composer install` targeting either will be blocked by Composer's own audit for most consumers. Support for both has been dropped as of `v0.5.0`. If you're still running Laravel 10/11, pin this package to `v0.4.x`, but prioritize upgrading Laravel first — that's the more urgent fix.
 >
-> Every PHP/Laravel/Livewire combination listed above is verified on every push via [GitHub Actions](https://github.com/codebyray/livewire-media-uploader/actions/workflows/tests.yml).
+> Every supported PHP/Laravel/Livewire combination is verified on pull requests and pushes to the configured release branches via [GitHub Actions](https://github.com/codebyray/livewire-media-uploader/actions/workflows/tests.yml).
 
 ---
 
@@ -97,6 +100,73 @@ The component is registered under **both** aliases:
 
 - `<livewire:media-uploader ... />`
 - `<livewire:media.media-uploader ... />`
+
+---
+
+## Upgrading to v0.8.0
+
+`v0.8.0` fixes attachment security, replacement failures, morph-map ownership checks, queue ordering, and uploaded media names. The dependency requirements are unchanged from `v0.7.0`; the attachment rules below are intentional behavior changes.
+
+Update your Composer constraint when the release is available:
+
+```bash
+composer require codebyray/livewire-media-uploader:^0.8.0 --with-all-dependencies
+```
+
+### Deferred uploads require a policy
+
+If an uploader uses `model` without an `id`, add `authorizeAbility` and ensure its Gate/Policy permits the current user to manage media on the newly saved record:
+
+```blade
+<livewire:media-uploader
+    model="post"
+    collection="images"
+    disk="public"
+    authorizeAbility="update"
+    channel="post-images"
+/>
+```
+
+For posts owned by a user, an example `App\Policies\PostPolicy` is:
+
+```php
+namespace App\Policies;
+
+use App\Models\Post;
+use App\Models\User;
+
+class PostPolicy
+{
+    public function update(User $user, Post $post): bool
+    {
+        return (string) $post->user_id === (string) $user->getKey();
+    }
+}
+```
+
+Use your application's actual ownership or permission rules. Register the policy if your app does not discover it automatically. Without an ability, or if its policy denies access, deferred attachment returns `403`. A create-page authorization check alone does not authorize the record ID supplied to an attach event.
+
+After saving the post, dispatch the matching event:
+
+```php
+$this->dispatch(
+    'media:attach',
+    model: 'post',
+    id: $post->id,
+    collection: 'images',
+    channel: 'post-images',
+);
+```
+
+### Configure attachment settings on the uploader
+
+Move any `collection` or `disk` overrides from attach events to the uploader's props. These event arguments can only confirm the configured settings: a different collection is ignored, and a different disk returns `403`. Omit `disk` from the event to use the uploader's configured/default disk.
+
+The initial attachment must use the configured deferred model class, and an already-bound uploader cannot switch records. Use distinct channels for multiple uploader instances. To edit another record, mount a new uploader for that record.
+
+Uploaders already bound to a saved record through `:for` or `model` plus `id` do not require a new prop, provided your application already authorizes access to that fixed record. The optional authorization hook still enforces a policy on their mutations.
+
+No package database migration or new config key is required. Existing media names are not rewritten; preserving the original display name applies to new uploads. See the [changelog](CHANGELOG.md) for the complete release notes.
 
 ---
 
@@ -375,8 +445,13 @@ You can let users pick files **before** the model exists, and attach them **afte
     preset="images"
     :multiple="true"
     :showList="true"
+    authorizeAbility="update"
+    channel="post-images"
 />
 ```
+
+Deferred attachment requires `authorizeAbility`. Define a Gate or Policy that permits the current user to update the newly saved record (for example, only its owner). A create-page authorization check alone does not authorize the record ID supplied to an attach event.
+
 #### Livewire component (simplified)
 ```php
 use App\Models\Post;
@@ -407,7 +482,7 @@ class PostCreate extends Component
         $this->pendingPostId = $post->id;
 
         // Fire once per collection rendered on the page
-        $this->dispatch('media:attach', model: 'post', id: $post->id, collection: 'images');
+        $this->dispatch('media:attach', model: 'post', id: $post->id, collection: 'images', channel: 'post-images');
     }
 
     #[On('media-attached')]
@@ -426,9 +501,12 @@ class PostCreate extends Component
 #### How it works
 - On create screens, the component accepts model="post" without an id.
 - Files and per-file metadata are queued locally.
+- The component's `authorizeAbility` is checked against the saved record before the uploader binds to it. The model class must match the one configured at mount.
+- A supplied collection must match the uploader's configured collection. A supplied disk must match its explicit `disk` prop; omit the event's disk argument to use the uploader's configured/default disk. Attach events cannot override either setting.
+- Once bound, an uploader cannot switch to another record. Give each deferred uploader a distinct channel when several uploaders share a page.
 - After you persist the model, dispatch:
     ```php
-    $this->dispatch('media:attach', model: 'post', id: $post->id, collection: 'images');
+        $this->dispatch('media:attach', model: 'post', id: $post->id, collection: 'images', channel: 'post-images');
     ```
 - The uploader resolves the saved target, attaches any queued files, and emits media-attached.
 ---
@@ -596,7 +674,7 @@ The prop is optional. When omitted, the uploader uses `watermark.enabled` from c
 ### Processing behavior and requirements
 
 - Validation and exact-duplicate detection run before watermark processing.
-- Name-conflict handling and Media Library storage run after the watermark is successfully applied, so a watermark error does not delete an existing file during the `replace` strategy.
+- Name-conflict handling and Media Library storage run after the watermark is successfully applied. During the `replace` strategy, existing media is deleted only after the replacement and its metadata have been stored successfully, so watermark and storage failures preserve the original.
 - Multiple image uploads are processed individually.
 - Deferred create-form uploads are watermarked when the queued files are attached to the saved model.
 - Processing happens on Livewire's local temporary upload before the selected Media Library disk receives the file, including when the destination disk is remote.
@@ -627,10 +705,10 @@ The prop is optional. When omitted, the uploader uses `watermark.enabled` from c
 | `watermark` | `?bool` | Config value | Enable or disable watermarking for this uploader instance. |
 | `namespaces` | `array` | `['App\\Models']` | Namespaces for dotted-path resolution. |
 | `aliases` | `array` | `[]` | Local alias map, e.g. `['profile' => \App\Models\User::class]`. |
-| `attachedFilesTitle` | `string` | `"Current gallery"` | Heading text in the list card. |
+| `attachedFilesTitle` | `string` | `"Attached media"` | Heading text in the list card. |
 | `channel` | `?string` | `null` | Route deferred `media:attach` events to a specific uploader. When set, the incoming event must contain the same channel. |
 | `listAll` | `bool` | `false` | When `true`, the attached media list shows **all collections**, grouped by collection name (still editable). |
-| `authorizeAbility` | `?string` | `null` | Gate/Policy ability checked against the target model before upload/delete/edit/attach. See [Authorization](#authorization). |
+| `authorizeAbility` | `?string` | `null` | Gate/Policy ability checked against the target model before upload/delete/edit/reorder/attach. Required for deferred attachment. See [Authorization](#authorization). |
 
 ---
 
@@ -638,7 +716,7 @@ The prop is optional. When omitted, the uploader uses `watermark.enabled` from c
 
 The component dispatches browser events you can listen for:
 
-- `media:attach` — **incoming** event the component listens for. Arguments: `model` (class/alias), `id`, optional `collection`, optional `disk`, and optional `channel`. When the uploader has a channel, the event must provide the same value. Triggers attaching queued files to the saved target.
+- `media:attach` — **incoming** event the component listens for. Arguments: `model` (class/alias), `id`, optional `collection`, optional `disk`, and optional `channel`. A configured channel must match exactly. A different collection is ignored; a different disk is rejected. The initial deferred attachment requires `authorizeAbility` and the configured model class. An already-bound uploader only accepts its existing model and ID. Triggers attaching queued files to the saved target.
 - `media-attached` — emitted after a successful `media:attach`. Payload: `{ model: FQCN, id: string, channel: ?string }`.
 - `media-uploaded` — emitted after an immediate upload (when a target already exists).
 - `media-deleted` — emitted after deletion (`detail.id` contains the Media ID).
@@ -659,9 +737,11 @@ Example:
 
 ## Authorization
 
-**By default, the component does not perform any authorization.** It verifies that a given `Media` record belongs to the resolved target model before allowing edits/deletes, but it does **not** check whether the *current user* is allowed to modify that model. It's your app's responsibility to ensure the component only renders where the user already has access (route middleware, a policy check before rendering the page, etc.).
+For an uploader bound to a saved record at mount, `authorizeAbility` is optional. Without it, the component verifies that media belongs to that fixed record, but your app must authorize the user's access before rendering the component. The uploader cannot be retargeted to another record by an attach event.
 
-If you'd like the component to enforce this itself, set `authorizeAbility` to a Gate/Policy ability name. It's checked against the resolved target model before every mutating action (`uploadFiles`, `remove`, `saveEdit`, and the `media:attach` event handler), using Laravel's own `Gate::authorize()` — no extra package required, and it plays nicely with anything already wired up (Policies, Gate closures, Spatie Permissions via a Gate, etc.).
+For deferred uploads (`model` without an `id`), **`authorizeAbility` is required before attachment**. The model and ID passed to `media:attach` are client-controlled input, even when the event is dispatched by a parent Livewire component. A route or create-page policy check cannot authorize those arguments. The uploader checks the configured ability against the selected saved record and returns `403` if no ability is configured or the policy denies access.
+
+Set `authorizeAbility` to a Gate/Policy ability name to enforce authorization before every persistent mutation (`uploadFiles`, `remove`, `saveEdit`, `reorderItems`, and `media:attach`). It uses Laravel's `Gate::authorize()` and works with existing Policies, Gate closures, or permission systems integrated with Gate.
 
 ```html
 <livewire:media-uploader
@@ -672,12 +752,13 @@ If you'd like the component to enforce this itself, set `authorizeAbility` to a 
 />
 ```
 
-With the example above, before any upload/delete/edit/attach action runs, the component calls the equivalent of `Gate::authorize('update', $post)`. If your `PostPolicy::update()` returns `false`, the action aborts with a `403` instead of proceeding.
+With the example above, before any upload/delete/edit/reorder/attach action runs, the component calls the equivalent of `Gate::authorize('update', $post)`. If your `PostPolicy::update()` returns `false`, the action aborts with a `403` instead of proceeding.
 
 **Notes:**
-- One ability is checked for all mutating actions. If you need `delete` and `update` to map to different Policy methods, don't set `authorizeAbility` — instead wrap the component's Blade usage behind your own check, or open an issue/PR describing the use case.
-- The `channel` prop routes `media:attach` events to the intended component instance. A configured channel must match exactly, but it is **not** an authorization boundary. Use `authorizeAbility` (or your own upstream checks) if untrusted input could influence which `model`/`id` gets dispatched.
-- Leaving `authorizeAbility` unset preserves the exact behavior of versions prior to `0.5.0` — this is a fully backward-compatible, opt-in addition.
+- One ability is checked for all persistent mutations. If media management needs a distinct policy from the model's usual `update` ability, define a dedicated ability (for example, `manageMedia`) and pass that name. Hiding a button or wrapping the Blade component does not authorize individual Livewire actions.
+- The `channel` prop routes `media:attach` events to the intended component instance. A configured channel must match exactly, but it is not an authorization boundary.
+- The configured deferred model class, collection, and disk cannot be changed through attachment arguments. Set these on the uploader itself.
+- When upgrading existing create forms, add `authorizeAbility` and a matching Gate/Policy. Deferred attachment without an ability now returns `403`.
 
 ---
 
@@ -710,6 +791,10 @@ With the example above, before any upload/delete/edit/attach action runs, the co
     - It’s a valid FQCN, morph alias, or maps via dotted path within `namespaces`, or
     - You passed a local alias via `:aliases="['something' => \App\Models\YourModel::class]`.
 
+- **Deferred attachment returns `403`:** Set `authorizeAbility` and verify that its Gate/Policy permits the current user to manage media on the saved record. The event must use the configured model class and cannot change the disk or switch an already-bound target. See [Upgrading to v0.8.0](#upgrading-to-v080).
+
+- **An attach event is ignored:** Check that the event's collection matches the uploader and that its channel matches exactly when a channel is configured.
+
 - **Multiple files selected, but only one remains after upload**  
   Check the target model's `registerMediaCollections()` method. If the collection uses Spatie Media Library's `->singleFile()`, each new upload replaces the previous media item.
 
@@ -739,7 +824,11 @@ With the example above, before any upload/delete/edit/attach action runs, the co
 
 ## Roadmap
 
-- Show document icon instead of thumbnail in Attached media list if the file is not an image.
+Possible future additions:
+
+- Configurable upload count and total batch-size limits.
+- Richer upload event payloads for consuming applications.
+- Expiring preview and download URLs for private media.
 
 PRs welcome!
 

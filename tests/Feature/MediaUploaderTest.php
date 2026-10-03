@@ -496,12 +496,14 @@ it('reorders the pending upload queue before files are uploaded', function () {
 it('requires the configured channel when attaching deferred uploads', function () {
     $post = TestPost::create(['title' => 'Hello']);
     $file = TemporaryUploadedFile::fake()->image('queued.jpg', 20, 20);
+    Gate::define('attach-media', fn (?User $user) => true);
 
     $component = Livewire::test(MediaUploader::class, [
         'model' => TestPost::class,
         'collection' => 'images',
         'preset' => 'images',
         'channel' => 'post-gallery',
+        'authorizeAbility' => 'attach-media',
     ])->set('uploads', [$file]);
 
     $component->call('attachTo', TestPost::class, $post->id, 'images');
