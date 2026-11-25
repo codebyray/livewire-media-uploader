@@ -21,7 +21,9 @@ use Spatie\Image\Enums\Fit;
 use Spatie\Image\Enums\Unit;
 use Spatie\Image\Image;
 use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\MediaCollections\FileAdder;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
+use Throwable;
 
 class MediaUploader extends Component
 {
@@ -379,6 +381,7 @@ class MediaUploader extends Component
     {
         $this->reset(['uploads', 'selected']);
         $this->pendingMeta = [];
+        $this->resetValidation(['uploads', 'uploads.*', 'pendingMeta.*']);
     }
 
     public function uploadFiles(): void
@@ -395,26 +398,29 @@ class MediaUploader extends Component
         $this->authorizeAction($model);
         $collection = $this->collection ?? 'default';
         $added = $replaced = $skipped = $renamed = 0;
+        $failedKey = null;
 
         // Enum strategy integration
         $strategy = NameConflictStrategy::tryFrom($this->onNameConflict) ?? NameConflictStrategy::RENAME;
 
         foreach ($this->uploads as $i => $file) {
             $originalName = method_exists($file, 'getClientOriginalName') ? $file->getClientOriginalName() : (property_exists($file, 'name') ? $file->name : 'file');
-            $preparedPath = $this->prepareUploadedFile($file, $originalName);
+            $preparedPath = null;
+            $completed = false;
+            $uploadUuid = (string) Str::uuid();
 
             try {
+                $preparedPath = $this->prepareUploadedFile($file, $originalName);
                 $hash = $this->skipExactDuplicates ? $this->fileSha256($preparedPath) : null;
                 if ($this->skipExactDuplicates && $hash) {
                     $existsSameHash = $model->media()->where('collection_name', $collection)->where('custom_properties->sha256', $hash)->first();
                     if ($existsSameHash) {
                         $skipped++;
+                        $completed = true;
 
                         continue;
                     }
                 }
-
-                $this->applyWatermark($preparedPath, $file);
 
                 $targetName = $originalName;
                 $replacement = null;
@@ -426,15 +432,17 @@ class MediaUploader extends Component
                                 break;
                             case NameConflictStrategy::SKIP:
                                 $skipped++;
+                                $completed = true;
 
                                 continue 2;
                             case NameConflictStrategy::RENAME:
                                 $targetName = $this->uniqueFileName($model, $collection, $originalName);
-                                $renamed++;
                                 break;
                         }
                     }
                 }
+
+                $this->applyWatermark($preparedPath, $file);
 
                 $meta = $this->pendingMeta[$i] ?? [];
                 $properties = [
@@ -445,15 +453,22 @@ class MediaUploader extends Component
                     $properties['sha256'] = $hash;
                 }
 
+                $mediaProperties = ['uuid' => $uploadUuid];
+                if (! empty($meta['order'])) {
+                    $mediaProperties['order_column'] = (int) $meta['order'];
+                }
                 $adder = $model->addMedia($preparedPath)
                     ->usingFileName($targetName)
                     ->usingName(pathinfo($originalName, PATHINFO_FILENAME))
-                    ->withCustomProperties($properties);
-                if (! empty($meta['order'])) {
-                    $adder->withProperties(['order_column' => (int) $meta['order']]);
-                }
+                    ->withCustomProperties($properties)
+                    ->withProperties($mediaProperties);
 
                 $this->disk ? $adder->toMediaCollection($collection, $this->disk) : $adder->toMediaCollection($collection);
+                $completed = true;
+                $added++;
+                if ($targetName !== $originalName) {
+                    $renamed++;
+                }
 
                 // Spatie may already have removed it for a single-file collection.
                 // Never remove an existing file until the replacement is stored.
@@ -461,16 +476,43 @@ class MediaUploader extends Component
                     $replacement->fresh()?->delete();
                     $replaced++;
                 }
-                $added++;
+            } catch (Throwable $exception) {
+                report($exception);
+
+                if (! $completed) {
+                    // A synchronous conversion or event may fail after the row
+                    // and original file were written. Remove only this attempt.
+                    try {
+                        $model->media()->where('uuid', $uploadUuid)->first()?->delete();
+                    } catch (Throwable $cleanupException) {
+                        report($cleanupException);
+                    }
+                }
+
+                $failedKey = $i;
+                $this->addError(
+                    $completed ? 'uploads' : "uploads.$i",
+                    $completed
+                        ? 'The file was saved, but replacement cleanup failed. Please contact the site administrator.'
+                        : 'This file could not be uploaded. Please try again or remove it from the queue.',
+                );
+
+                break;
             } finally {
-                if (is_file($preparedPath)) {
+                if ($completed) {
+                    unset($this->uploads[$i], $this->pendingMeta[$i]);
+                }
+                if (is_string($preparedPath) && is_file($preparedPath)) {
                     @unlink($preparedPath);
                 }
             }
         }
 
-        $this->clearQueue();
-        $this->pendingMeta = [];
+        if ($failedKey === null) {
+            $this->clearQueue();
+        } else {
+            $this->updatedUploads();
+        }
         if ($this->showList) {
             $this->loadItems();
         }
@@ -489,8 +531,18 @@ class MediaUploader extends Component
             $parts[] = "{$skipped} skipped";
         }
 
-        $msg = $parts ? ('Upload complete: '.implode(', ', $parts).'.') : 'Nothing uploaded.';
-        $this->dispatch('media-uploaded');
+        $summary = implode(', ', $parts);
+        if ($failedKey !== null) {
+            $msg = 'Upload paused.'.($summary ? " {$summary}." : '')
+                .($this->uploads ? ' Remaining files are still queued.' : ' Please contact the site administrator about cleanup.');
+            session()->flash('media_uploader_failed', true);
+            $this->dispatch('media-upload-failed', collection: $collection, channel: $this->channel, queueKey: $failedKey);
+        } else {
+            $msg = $parts ? "Upload complete: {$summary}." : 'Nothing uploaded.';
+            session()->flash('media_uploader_failed', false);
+            $this->dispatch('media-uploaded');
+            $this->completeAttachment();
+        }
         session()->flash('media_uploader_notice', $msg);
     }
 
@@ -528,9 +580,21 @@ class MediaUploader extends Component
 
         if (! empty($this->uploads)) {
             $this->uploadFiles();
+
+            return;
         }
 
-        $this->dispatch('media-attached', model: $fqcn, id: (string) $id, channel: $channel);
+        $this->completeAttachment();
+    }
+
+    protected function completeAttachment(): void
+    {
+        if ($this->pendingModelClass === null) {
+            return;
+        }
+
+        $this->pendingModelClass = null;
+        $this->dispatch('media-attached', model: $this->resolvedModelClass, id: (string) $this->resolvedModelId, channel: $this->channel);
     }
 
     protected function ownedMedia(int $mediaId): Media
@@ -554,6 +618,7 @@ class MediaUploader extends Component
 
     public function removeFromQueue(int $queueKey): void
     {
+        $this->resetValidation(['uploads', 'uploads.*', 'pendingMeta.*']);
         unset($this->uploads[$queueKey], $this->pendingMeta[$queueKey]);
         $this->uploads = array_values($this->uploads);
         $this->pendingMeta = array_values($this->pendingMeta);
@@ -739,6 +804,7 @@ class MediaUploader extends Component
 
         $this->uploads = $newUploads;
         $this->pendingMeta = $newPendingMeta;
+        $this->resetValidation(['uploads', 'uploads.*', 'pendingMeta.*']);
 
         $this->updatedUploads();
     }
@@ -901,7 +967,18 @@ class MediaUploader extends Component
 
     protected function existingByName(Model $model, string $collection, string $fileName): ?Media
     {
-        return $model->media()->where('collection_name', $collection)->where('file_name', $fileName)->first();
+        return $model->media()->where('collection_name', $collection)->where('file_name', $this->storedFileName($fileName))->first();
+    }
+
+    protected function storedFileName(string $fileName): string
+    {
+        // Compare the name Media Library will actually store, but pass the
+        // original candidate to FileAdder so custom namers only run once.
+        $sanitized = app(FileAdder::class)->defaultSanitizer($fileName);
+        $base = app(config('media-library.file_namer'))->originalFileName($sanitized);
+        $extension = pathinfo($sanitized, PATHINFO_EXTENSION);
+
+        return $base.($extension === '' ? '' : '.'.$extension);
     }
 
     protected function uniqueFileName(Model $model, string $collection, string $original): string
@@ -910,7 +987,13 @@ class MediaUploader extends Component
         $ext = pathinfo($original, PATHINFO_EXTENSION);
         $suffix = 0;
         $candidate = $original;
-        while ($model->media()->where('collection_name', $collection)->where('file_name', $candidate)->exists()) {
+        $seen = [];
+        while ($this->existingByName($model, $collection, $candidate)) {
+            $storedName = $this->storedFileName($candidate);
+            if (isset($seen[$storedName])) {
+                throw new RuntimeException('The configured file namer cannot produce a unique file name.');
+            }
+            $seen[$storedName] = true;
             $suffix++;
             $candidate = $base.' ('.$suffix.')'.($ext ? ".{$ext}" : '');
         }

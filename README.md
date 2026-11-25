@@ -6,7 +6,7 @@
 
 Livewire Media Uploader is a reusable Livewire v3/v4 component that integrates seamlessly with Spatie Laravel Media Library. It ships a clean Tailwind Blade view by default (fully publishable), Bootstrap theme as an option, Alpine overlays for previews/confirmations, drag-and-drop uploads, per-file metadata (caption/description/order), configurable presets, image watermarking, name-conflict strategies, and optional SHA-256 duplicate detection. Drop it in, point it at a model, and you’re shipping in minutes.
 
-Upgrading from `v0.7.x`? Read [Upgrading to v0.8.0](#upgrading-to-v080) before deploying, especially if you use deferred uploads on create forms.
+`v1.0.0-rc.1` is a release candidate for application testing before the stable `v1.0.0` release. Read [Upgrading to v1.0.0-rc.1](#upgrading-to-v100-rc1), especially if you listen for completion events or use published views.
 
 ---
 
@@ -15,6 +15,7 @@ Upgrading from `v0.7.x`? Read [Upgrading to v0.8.0](#upgrading-to-v080) before d
 - [Features](#features)
 - [Requirements](#requirements)
 - [Installation](#installation)
+- [Upgrading to v1.0.0-rc.1](#upgrading-to-v100-rc1)
 - [Upgrading to v0.8.0](#upgrading-to-v080)
 - [Publishing Assets](#publishing-assets)
 - [Theme System](#theme-system-tailwind--bootstrap--custom)
@@ -28,6 +29,8 @@ Upgrading from `v0.7.x`? Read [Upgrading to v0.8.0](#upgrading-to-v080) before d
 - [Props](#props)
 - [Events](#events)
 - [Authorization](#authorization)
+- [API and support policy](docs/API.md)
+- [Testing and release verification](docs/RELEASING.md)
 - [Model Setup (Spatie Media Library)](#model-setup-spatie-media-library)
 - [Overlays & UX Notes](#overlays--ux-notes)
 - [Troubleshooting](#troubleshooting)
@@ -64,8 +67,8 @@ Upgrading from `v0.7.x`? Read [Upgrading to v0.8.0](#upgrading-to-v080) before d
 ## Requirements
 
 - PHP **8.2+** (Laravel 13 requires **8.3+**)
-- Laravel **^12.0 | ^13.0**
-- Livewire **^3.8.3 | ^4.3.4**
+- Laravel **^12.71 | ^13.40**
+- Livewire **^3.8.3 | ^4.4.8**
 - spatie/laravel-medialibrary **^11.0**
 - spatie/image **^3.3.2**
 - TailwindCSS (optional but recommended for the default view)
@@ -86,6 +89,8 @@ Upgrading from `v0.7.x`? Read [Upgrading to v0.8.0](#upgrading-to-v080) before d
 composer require codebyray/livewire-media-uploader
 ```
 
+This installs the latest stable release. To evaluate the release candidate, use the explicit version in the [RC upgrade guide](#upgrading-to-v100-rc1).
+
 Auto-discovery will register the service provider. If you disable discovery, add:
 
 ```php
@@ -100,6 +105,26 @@ The component is registered under **both** aliases:
 
 - `<livewire:media-uploader ... />`
 - `<livewire:media.media-uploader ... />`
+
+---
+
+## Upgrading to v1.0.0-rc.1
+
+To evaluate the candidate after its tag is published, opt in to this specific prerelease without lowering your application's global minimum stability:
+
+```bash
+composer require codebyray/livewire-media-uploader:1.0.0-rc.1 --with-all-dependencies
+```
+
+- Update Laravel to `^12.71` or `^13.40`, and Livewire to `^3.8.3` or `^4.4.8`. Spatie Media Library v11 and Spatie Image v3 remain required.
+- Per-file processing failures now appear inline instead of escaping as an unhandled exception. Completed/skipped files leave the queue, while failed and unattempted files keep their metadata and can be retried or removed.
+- Listen for `media-upload-failed` if your application needs to react to a paused batch. Technical exception details are reported through Laravel's exception handler; the UI shows a generic message without server paths.
+- `media-uploaded` fires only after a batch finishes without processing errors. For deferred uploads, `media-attached` fires once when attachment finishes successfully, including after a retry. It is not emitted for a partial failure or a repeated attach event for an already-completed binding. Use that event for create-form redirects.
+- Conflict strategies compare Spatie's normalized stored filenames. Custom file namers must be deterministic and preserve distinguishing suffixes for `rename` to work; a namer that collapses all candidates to one name produces a file error instead of looping.
+- Merge the updated Tailwind/Bootstrap views into any published or custom copies. They include upload-error messages, accessible keyboard selection, modal focus management, unique dialog labels, and progress semantics. Back up custom views before replacing them; republishing with `--force` overwrites them.
+- The deferred-attachment authorization requirements introduced in `v0.8.0` still apply. Follow the guide below if upgrading from an earlier version.
+
+No package database migration or new configuration key is required. Existing stored media is not renamed. See the [API contract](docs/API.md), [RC verification guide](docs/RELEASING.md), and [changelog](CHANGELOG.md).
 
 ---
 
@@ -717,10 +742,14 @@ The prop is optional. When omitted, the uploader uses `watermark.enabled` from c
 The component dispatches browser events you can listen for:
 
 - `media:attach` — **incoming** event the component listens for. Arguments: `model` (class/alias), `id`, optional `collection`, optional `disk`, and optional `channel`. A configured channel must match exactly. A different collection is ignored; a different disk is rejected. The initial deferred attachment requires `authorizeAbility` and the configured model class. An already-bound uploader only accepts its existing model and ID. Triggers attaching queued files to the saved target.
-- `media-attached` — emitted after a successful `media:attach`. Payload: `{ model: FQCN, id: string, channel: ?string }`.
-- `media-uploaded` — emitted after an immediate upload (when a target already exists).
+- `media-attached` — emitted once after deferred attachment completes successfully, including after a retry. Payload: `{ model: FQCN, id: string, channel: ?string }`; `channel` is the uploader's configured channel. Not emitted for partial failures or repeated events after completion.
+- `media-uploaded` — emitted when a batch finishes without processing errors, including during deferred attachment. No payload. A batch consisting entirely of intentionally skipped files also completes successfully.
+- `media-upload-failed` — emitted when per-file processing pauses a batch. Payload: `{ collection: string, channel: ?string, queueKey: int }`. Completed files are removed from the queue; failed and unattempted files remain. The queue key identifies the attempted file, but may no longer exist if storage succeeded and replacement cleanup failed.
 - `media-deleted` — emitted after deletion (`detail.id` contains the Media ID).
 - `media-meta-updated` — emitted after inline metadata is saved.
+- `media-reordered` — emitted after attached-media reordering. Payload: `{ collection: string }`.
+
+Validation and authorization failures follow Livewire/Laravel's usual validation/`403` handling; they do not emit `media-upload-failed`. See [API and failure behavior](docs/API.md) for storage and retry limitations.
 
 Example:
 ```html

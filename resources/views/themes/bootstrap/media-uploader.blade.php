@@ -20,7 +20,7 @@
             x-transition.opacity.duration.150ms
             wire:key="flash-notice"
             role="alert"
-            class="alert alert-success alert-dismissible fade show mb-0 position-relative"
+            class="alert {{ session('media_uploader_failed') ? 'alert-danger' : 'alert-success' }} alert-dismissible fade show mb-0 position-relative"
         >
             <div class="pe-4">
                 {{ session('media_uploader_notice') }}
@@ -40,6 +40,7 @@
 
     <!-- Dropzone -->
     <div
+        data-media-dropzone
         class="rounded-3 border p-0 bg-white"
         :class="isDropping ? 'border-success' : 'border-secondary'"
         style="border-style: dashed;"
@@ -101,8 +102,11 @@
                 </div>
             </div>
 
-            <label class="btn btn-dark mb-0 d-inline-flex align-items-center gap-2">
-                <span>Choose file<span @class(['', 's' => $multiple])>s</span></span>
+            <label role="button" tabindex="0"
+                   @keydown.enter.prevent="$refs.input.click()"
+                   @keydown.space.prevent="$refs.input.click()"
+                   class="btn btn-dark mb-0 d-inline-flex align-items-center gap-2">
+                <span>Choose {{ $multiple ? 'files' : 'file' }}</span>
                 <input
                     x-ref="input"
                     type="file"
@@ -123,6 +127,10 @@
                 <div class="mt-1 small text-muted" x-text="progress + '%'"></div>
             </div>
         </template>
+
+        @error('uploads')
+            <p role="alert" class="px-3 pb-3 small text-danger">{{ $message }}</p>
+        @enderror
 
         <!-- Selected queue -->
         @if(!empty($selected) && count($selected) > 0)
@@ -214,6 +222,10 @@
                                 </div>
                                 <span class="small text-muted flex-shrink-0">{{ number_format(($sel['size'] ?? 0)/1024, 1) }} KB</span>
                             </div>
+
+                            @error('uploads.'.$sel['queue_key'])
+                                <p role="alert" class="mt-2 small text-danger">{{ $message }}</p>
+                            @enderror
 
                             <!-- form row -->
                             <div class="mt-3">
@@ -772,6 +784,7 @@
                 <div
                     x-cloak
                     x-show="preview.open"
+                    x-trap.inert.noscroll="preview.open"
                     x-transition.opacity
                     @keydown.window.escape="closePreview()"
                     class="position-fixed top-0 start-0 w-100 h-100"
@@ -785,6 +798,7 @@
                         type="button"
                         @click="closePreview()"
                         class="btn btn-light position-absolute end-0 top-0 m-3 d-inline-flex align-items-center justify-content-center"
+                        style="z-index: 1;"
                         aria-label="Close preview"
                     >
                         &times;
@@ -811,11 +825,12 @@
                     x-cloak
                     x-data
                     x-show="$wire.confirmingDeleteId !== null"
+                    x-trap.inert.noscroll="$wire.confirmingDeleteId !== null"
                     x-transition.opacity
                     @keydown.window.escape="$wire.cancelDelete()"
                     class="position-fixed top-0 start-0 w-100 h-100"
                     style="z-index: 1055;"
-                    aria-modal="true" role="dialog" aria-labelledby="delete-modal-title"
+                    aria-modal="true" role="dialog" aria-labelledby="delete-modal-title-{{ $this->getId() }}"
                 >
                     <div class="position-absolute top-0 start-0 w-100 h-100 bg-dark bg-opacity-75" @click="$wire.cancelDelete()"></div>
 
@@ -843,7 +858,7 @@
                                 </div>
 
                                 <div class="flex-grow-1 min-w-0">
-                                    <h3 id="delete-modal-title" class="h6 fw-semibold text-body mb-1">
+                                    <h3 id="delete-modal-title-{{ $this->getId() }}" class="h6 fw-semibold text-body mb-1">
                                         Delete this file?
                                     </h3>
                                     <p class="text-muted small mb-1 text-truncate">

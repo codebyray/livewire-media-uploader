@@ -157,7 +157,7 @@ it('preserves existing media when watermarking fails during replacement', functi
     $existingMediaId = $post->getFirstMedia('images')->id;
     $replacement = TemporaryUploadedFile::fake()->image('replace.png', 60, 60);
 
-    expect(fn () => Livewire::test(MediaUploader::class, [
+    Livewire::test(MediaUploader::class, [
         'for' => $post,
         'collection' => 'images',
         'preset' => 'images',
@@ -165,8 +165,9 @@ it('preserves existing media when watermarking fails during replacement', functi
         'onNameConflict' => 'replace',
     ])
         ->set('uploads', [$replacement])
-        ->call('uploadFiles'))
-        ->toThrow(RuntimeException::class, 'Configure media-uploader.watermark.path');
+        ->call('uploadFiles')
+        ->assertHasErrors('uploads.0')
+        ->assertNotDispatched('media-uploaded');
 
     expect($post->fresh()->getMedia('images'))
         ->toHaveCount(1)
