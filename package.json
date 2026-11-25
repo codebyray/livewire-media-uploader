@@ -1,0 +1,13 @@
+{
+  "name": "livewire-media-uploader-browser-tests",
+  "private": true,
+  "scripts": {
+    "build:test-css": "tailwindcss -i tests/Browser/tailwind.css -o tests/Browser/.runtime/tailwind.css --content './resources/views/**/*.blade.php'",
+    "test:browser": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "bootstrap": "^5.3.9",
+    "tailwindcss": "^3.4.19"
+  }
+}

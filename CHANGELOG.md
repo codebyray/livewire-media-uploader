@@ -10,6 +10,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.0.0-rc.1] — 2026-11-24
+
+This is a release candidate for integration testing, not the stable `v1.0.0` release.
+
+### Fixed
+
+- Compare normalized stored filenames for `rename`, `skip`, and `replace`, including names with spaces and configured file namers; repeated uploads now receive distinct suffixes.
+- Stop safely when a custom file namer cannot generate distinct names instead of looping indefinitely.
+- Remove completed/skipped files from paused batches while retaining failed/unattempted files and their metadata for retry.
+- Clean up interrupted storage attempts where possible before retrying, and keep successfully stored replacements out of the retry queue if old-file cleanup fails.
+- Emit deferred completion once, only after attachment and any retries finish, preventing premature create-form redirects.
+- Clear stale queue errors after removal, reordering, or clearing.
+
+### Added
+
+- Inline per-file/global processing errors and a `media-upload-failed` event with collection, configured channel, and attempted queue key. Technical errors are reported through Laravel's exception handler.
+- Keyboard-accessible file selection, modal focus trapping/restoration, unique delete-dialog labels, and accessible progress semantics in both themes.
+- Regression coverage for filenames, partial retries, deferred completion, interrupted writes, non-default temporary storage, and the shipped watermark sizing/padding/transparency/opacity settings.
+- Six real-browser scenarios for Tailwind and Bootstrap, plus browser CI jobs for Laravel 12/Livewire 3 and Laravel 13/Livewire 4.
+- Candidate upgrade instructions, a public API/support contract, private security-reporting guidance, and RC/stable release verification checklists.
+
+### Changed
+
+- Require Laravel `^12.71 || ^13.40` and Livewire `^3.8.3 || ^4.4.8` to exclude newly identified affected framework versions.
+- Resolve CI matrix dependencies using temporary constraints that preserve the package's declared minimums.
+- Exclude development-only tests, browser tooling, and CI files from Git distribution archives.
+- Processing failures return inline errors rather than escaping as unhandled exceptions. `media-uploaded` is emitted only when the batch finishes without processing errors; validation and authorization retain their usual Livewire/Laravel behavior.
+
+### Upgrade Notes
+
+- Opt in to `1.0.0-rc.1` explicitly in Composer; do not lower global minimum stability. No package database migration or new config key is required.
+- Review completion/error listeners and merge the updated shipped views into custom/published templates. See the [RC upgrade guide](README.md#upgrading-to-v100-rc1).
+- The deferred-upload authorization and fixed-target restrictions introduced in `v0.8.0` still apply.
+
 ## [v0.8.0] — 2026-10-03
 
 ### Added
@@ -184,6 +218,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## Upgrade Notes
+- **v1.0.0-rc.1:** Update patched framework minimums, use inline processing errors/`media-upload-failed` for paused batches, and wait for successful deferred completion before redirecting. Merge updated views and follow the [RC upgrade guide](README.md#upgrading-to-v100-rc1).
 - **v0.8.0:** Deferred attachment now requires `authorizeAbility` and a matching Gate/Policy. Configure the target model class, collection, and disk on the uploader; attach events can no longer override these settings or retarget an already-bound uploader. See the README's [v0.8.0 upgrade guide](README.md#upgrading-to-v080).
 - **v0.7.0:** Upgrade Livewire to `3.8.3+` or `4.3.4+` and Spatie Media Library to v11. These minimums guarantee the image API used for watermarking and exclude Livewire releases affected by CVE-2026-81887.
 - To get thumbnail previews, add a `thumb` conversion on your model or adjust the view to your conversion names.
@@ -191,7 +226,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/codebyray/livewire-media-uploader/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/codebyray/livewire-media-uploader/compare/v1.0.0-rc.1...HEAD
+[v1.0.0-rc.1]: https://github.com/codebyray/livewire-media-uploader/compare/v0.8.0...v1.0.0-rc.1
 [v0.8.0]: https://github.com/codebyray/livewire-media-uploader/compare/v0.7.0...v0.8.0
 [v0.7.0]: https://github.com/codebyray/livewire-media-uploader/compare/v0.6.0...v0.7.0
 [v0.6.0]: https://github.com/codebyray/livewire-media-uploader/compare/v0.5.0...v0.6.0

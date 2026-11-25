@@ -6,9 +6,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     name: PHP ${{ matrix.php }} — Laravel ${{ matrix.laravel }} — Livewire ${{ matrix.livewire }}
 
     strategy:
@@ -16,7 +20,7 @@ jobs:
       matrix:
         php: [8.2, 8.3, 8.4, 8.5]
         laravel: ['12.*', '13.*']
-        livewire: ['^3.8.3', '^4.3.4']
+        livewire: ['^3.8.3', '^4.4.8']
         include:
           - laravel: '12.*'
             testbench: '^10.0'
@@ -50,16 +54,61 @@ jobs:
 
       - name: Set matrix dependency versions
         run: |
-          composer require "laravel/framework:${{ matrix.laravel }}" \
-                            "orchestra/testbench:${{ matrix.testbench }}" \
-                            "livewire/livewire:${{ matrix.livewire }}" \
-                            --no-interaction --no-update
+          composer update --with "laravel/framework:${{ matrix.laravel }}" \
+                            --with "orchestra/testbench:${{ matrix.testbench }}" \
+                            --with "livewire/livewire:${{ matrix.livewire }}" \
+                            --no-interaction --no-install --no-progress
 
       - name: Install dependencies
-        run: composer update --prefer-dist --no-interaction --no-progress
+        run: composer install --prefer-dist --no-interaction --no-progress
 
       - name: Audit dependencies
         run: composer audit --locked
 
       - name: Run tests
         run: vendor/bin/pest --colors=always
+
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    name: Browser — Laravel ${{ matrix.laravel }} — Livewire ${{ matrix.livewire }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - laravel: '12.*'
+            testbench: '^10.0'
+            livewire: '^3.8.3'
+          - laravel: '13.*'
+            testbench: '^11.0'
+            livewire: '^4.4.8'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, dom, fileinfo, gd, pdo_sqlite, sqlite3
+          coverage: none
+          tools: composer:v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install matrix dependencies
+        run: |
+          composer update --with "laravel/framework:${{ matrix.laravel }}" \
+                          --with "orchestra/testbench:${{ matrix.testbench }}" \
+                          --with "livewire/livewire:${{ matrix.livewire }}" \
+                          --prefer-dist --no-interaction --no-progress
+      - run: composer audit --locked
+      - run: npm ci
+      - run: npm audit --audit-level=high
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+      - name: Upload browser traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-traces-${{ strategy.job-index }}
+          path: test-results/
+          retention-days: 7

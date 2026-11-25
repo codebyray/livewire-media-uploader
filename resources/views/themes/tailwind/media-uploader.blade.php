@@ -21,8 +21,9 @@
             wire:key="flash-notice"
             role="alert"
             class="relative rounded-md border px-3 py-2 text-sm
-                   border-emerald-200 bg-emerald-50 text-emerald-900
-                   dark:border-emerald-800/40 dark:bg-emerald-900/20 dark:text-emerald-200"
+                   {{ session('media_uploader_failed')
+                       ? 'border-red-200 bg-red-50 text-red-900 dark:border-red-800/40 dark:bg-red-900/20 dark:text-red-200'
+                       : 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800/40 dark:bg-emerald-900/20 dark:text-emerald-200' }}"
         >
             <div class="pr-8">
                 {{ session('media_uploader_notice') }}
@@ -49,6 +50,7 @@
 
     <!-- Dropzone -->
     <div
+        data-media-dropzone
         class="rounded-xl border-2 p-0 shadow-none bg-white dark:bg-neutral-800"
         :class="isDropping ? 'border-emerald-500' : 'border-neutral-200 dark:border-neutral-700'"
         style="border-style: dashed;"
@@ -110,8 +112,11 @@
                 </div>
             </div>
 
-            <label class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium cursor-pointer bg-neutral-900 text-white hover:bg-neutral-800 dark:text-white dark:bg-sky-600 dark:hover:bg-sky-500">
-                <span>Choose file<span @class(['', 's' => $multiple])>s</span></span>
+            <label role="button" tabindex="0"
+                   @keydown.enter.prevent="$refs.input.click()"
+                   @keydown.space.prevent="$refs.input.click()"
+                   class="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium cursor-pointer bg-neutral-900 text-white hover:bg-neutral-800 dark:text-white dark:bg-sky-600 dark:hover:bg-sky-500 focus-visible:ring-2 focus-visible:ring-sky-500">
+                <span>Choose {{ $multiple ? 'files' : 'file' }}</span>
                 <input
                     x-ref="input"
                     type="file"
@@ -126,12 +131,16 @@
         <!-- Progress -->
         <template x-if="progress > 0">
             <div class="px-4 pb-4">
-                <div class="w-full rounded-full h-2 bg-neutral-100 dark:bg-neutral-800">
+                <div role="progressbar" aria-label="Upload progress" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="progress" class="w-full rounded-full h-2 bg-neutral-100 dark:bg-neutral-800">
                     <div class="h-2 rounded-full transition-all bg-neutral-900 dark:bg-neutral-100" :style="`width:${progress}%;`"></div>
                 </div>
                 <div class="mt-1 text-xs text-neutral-500 dark:text-neutral-400" x-text="progress + '%'"></div>
             </div>
         </template>
+
+        @error('uploads')
+            <p role="alert" class="px-4 pb-3 text-sm text-red-600">{{ $message }}</p>
+        @enderror
 
         <!-- Selected queue -->
         @if(!empty($selected) && count($selected) > 0)
@@ -223,6 +232,10 @@
                                 </div>
                                 <span class="text-xs text-neutral-500 dark:text-neutral-400 shrink-0">{{ number_format(($sel['size'] ?? 0)/1024, 1) }} KB</span>
                             </div>
+
+                            @error('uploads.'.$sel['queue_key'])
+                                <p role="alert" class="mt-2 text-sm text-red-600">{{ $message }}</p>
+                            @enderror
 
                             <!-- form row -->
                             <div class="mt-3 items-start">
@@ -893,6 +906,7 @@
                 <div
                     x-cloak
                     x-show="preview.open"
+                    x-trap.inert.noscroll="preview.open"
                     x-transition.opacity
                     @keydown.window.escape="closePreview()"
                     class="fixed inset-0 z-[60]"
@@ -902,7 +916,7 @@
                     <button
                         type="button"
                         @click="closePreview()"
-                        class="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-lg
+                        class="absolute right-4 top-4 z-10 inline-flex h-9 w-9 items-center justify-center rounded-lg
                        bg-white/90 text-neutral-700 shadow hover:bg-white
                        dark:bg-neutral-800/90 dark:text-neutral-200 dark:hover:bg-neutral-800"
                         aria-label="Close preview"
@@ -930,10 +944,11 @@
                     x-cloak
                     x-data
                     x-show="$wire.confirmingDeleteId !== null"
+                    x-trap.inert.noscroll="$wire.confirmingDeleteId !== null"
                     x-transition.opacity
                     @keydown.window.escape="$wire.cancelDelete()"
                     class="fixed inset-0 z-50"
-                    aria-modal="true" role="dialog" aria-labelledby="delete-modal-title"
+                    aria-modal="true" role="dialog" aria-labelledby="delete-modal-title-{{ $this->getId() }}"
                 >
                     <div class="absolute inset-0 bg-black/80" @click="$wire.cancelDelete()"></div>
                     <div class="relative mx-auto mt-24 w-full max-w-md rounded-xl bg-white p-4 shadow-lg dark:bg-neutral-900 border dark:border-neutral-700">
@@ -957,7 +972,7 @@
                                 @endif
                             </div>
                             <div class="flex-1 min-w-0">
-                                <h3 id="delete-modal-title" class="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+                                <h3 id="delete-modal-title-{{ $this->getId() }}" class="text-base font-semibold text-neutral-900 dark:text-neutral-100">
                                     Delete this file?
                                 </h3>
                                 <p class="mt-1 text-sm text-neutral-600 dark:text-neutral-300 truncate">

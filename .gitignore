@@ -5,3 +5,7 @@ composer.lock
 build/
 .phpunit.cache
 .phpunit.result.cache
+node_modules/
+tests/Browser/.runtime/
+test-results/
+playwright-report/

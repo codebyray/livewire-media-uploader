@@ -11,8 +11,6 @@ use Illuminate\Support\Facades\Schema;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
 use Livewire\Livewire;
-use Spatie\MediaLibrary\MediaCollections\Exceptions\DiskCannotBeAccessed;
-use Spatie\MediaLibrary\MediaCollections\Exceptions\DiskDoesNotExist;
 use Spatie\MediaLibrary\MediaCollections\Filesystem;
 
 afterEach(function () {
@@ -314,14 +312,14 @@ it('preserves the original media when the replacement disk is unconfigured', fun
     $original = $post->getFirstMedia('images');
     $originalHash = hash_file('sha256', $original->getPath());
 
-    expect(fn () => Livewire::test(MediaUploader::class, [
+    Livewire::test(MediaUploader::class, [
         'for' => $post,
         'onNameConflict' => 'replace',
         'disk' => 'unconfigured-disk',
     ])
         ->set('uploads', [TemporaryUploadedFile::fake()->image('cover.png', 30, 30)])
-        ->call('uploadFiles'))
-        ->toThrow(DiskDoesNotExist::class);
+        ->call('uploadFiles')
+        ->assertHasErrors('uploads.0');
 
     expect($original->fresh())->not->toBeNull()
         ->and(hash_file('sha256', $original->getPath()))->toBe($originalHash)
@@ -340,13 +338,13 @@ it('preserves original media when the replacement cannot be written', function (
     $filesystem->shouldReceive('add')->once()->andReturn(false);
     app()->instance(Filesystem::class, $filesystem);
 
-    expect(fn () => Livewire::test(MediaUploader::class, [
+    Livewire::test(MediaUploader::class, [
         'for' => $post,
         'onNameConflict' => 'replace',
     ])
         ->set('uploads', [TemporaryUploadedFile::fake()->image('cover.png', 30, 30)])
-        ->call('uploadFiles'))
-        ->toThrow(DiskCannotBeAccessed::class);
+        ->call('uploadFiles')
+        ->assertHasErrors('uploads.0');
 
     expect($original->fresh())->not->toBeNull()
         ->and(hash_file('sha256', $original->getPath()))->toBe($originalHash)
